@@ -1,1 +1,2 @@
 \Processor(*)\% Processor Time
+\Network Interface(*)\Bytes Sent/sec
