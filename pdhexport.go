@@ -105,6 +105,7 @@ func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
 
 			cSet := PdhCounterSet{
 				Hostname: hostName,
+				Interval: config.Pdh_Counters.Interval,
 			}
 
 			// Add into cSet each PdhCounter that has a key that matches the hostname
@@ -125,8 +126,9 @@ func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
 }
 
 type PdhCounterSet struct {
-	Hostname string
 	Counters []PdhCounter
+	Hostname string
+	Interval int64
 }
 
 func readCounterConfigFile(file string, countersChannel chan string) {
@@ -225,7 +227,8 @@ func processCounters(setChan chan PdhCounterSet) {
 								}
 							}
 
-							time.Sleep(1 * time.Second)
+							d := time.Duration(cSet.Interval) * time.Second
+							time.Sleep(d)
 						}
 					}()
 				}

@@ -11,10 +11,10 @@ type Config struct {
 }
 
 type PdhCounters struct {
-	Metric_prefix string
-	Interval      int
 	Counters      map[string][]PdhCounter
 	HostNames     []string
+	Interval      int64
+	MetricPrefix string
 }
 
 func NewConfig(config_path string) (config Config) {

@@ -1,5 +1,5 @@
 pdh_counters:
-    metric_prefix: 'tester'
+    metricprefix: 'tester'
     interval: 5
     counters:
         eng-.*:
