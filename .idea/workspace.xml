@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="36fe49ee-426e-481f-b176-084ee5f80fb6" name="Default" comment="">
-      <change beforePath="" afterPath="$PROJECT_DIR$/PdhCounter.go" />
-      <change beforePath="" afterPath="$PROJECT_DIR$/config.go" />
-      <change beforePath="" afterPath="$PROJECT_DIR$/config.yml" />
+    <list default="true" id="36fe49ee-426e-481f-b176-084ee5f80fb6" name="Default" comment="Made the yaml 'Interval' property functional">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change beforePath="$PROJECT_DIR$/counters.txt" afterPath="$PROJECT_DIR$/counters.txt" />
-      <change beforePath="$PROJECT_DIR$/pdhexport.go" afterPath="$PROJECT_DIR$/pdhexport.go" />
+      <change beforePath="$PROJECT_DIR$/counters.txt" afterPath="" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -18,28 +14,16 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="counters.txt" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/counters.txt">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="0">
-              <caret line="43" column="21" lean-forward="false" selection-start-line="43" selection-start-column="21" selection-end-line="43" selection-end-column="21" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="pdhexport.go" pinned="false" current-in-tab="false">
+      <file leaf-file-name="pdhexport.go" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/pdhexport.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="567">
-              <caret line="153" column="49" lean-forward="false" selection-start-line="153" selection-start-column="49" selection-end-line="153" selection-end-column="49" />
+            <state relative-caret-position="817">
+              <caret line="228" column="0" lean-forward="true" selection-start-line="228" selection-start-column="0" selection-end-line="228" selection-end-column="0" />
               <folding>
                 <element signature="e#14#287#0" expanded="true" />
                 <element signature="e#1581#1670#0" expanded="false" />
                 <element signature="n#!!block;n#watchFile#0" expanded="false" />
-                <element signature="n#!!block;n#ReadConfigFile#0" expanded="false" />
                 <element signature="n#!!block;n#readCounterConfigFile#0" expanded="false" />
-                <element signature="n#!!block;n#processCounters#0" expanded="false" />
                 <element signature="n#!!block;n#counterToPrometheusGauge#0" expanded="false" />
               </folding>
             </state>
@@ -49,8 +33,8 @@
       <file leaf-file-name="config.go" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/config.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="220">
-              <caret line="16" column="13" lean-forward="false" selection-start-line="16" selection-start-column="13" selection-end-line="16" selection-end-column="13" />
+            <state relative-caret-position="462">
+              <caret line="27" column="28" lean-forward="true" selection-start-line="27" selection-start-column="28" selection-end-line="27" selection-end-column="28" />
               <folding>
                 <element signature="e#78#114#0" expanded="false" />
               </folding>
@@ -70,11 +54,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="config.yml" pinned="false" current-in-tab="true">
+      <file leaf-file-name="config.yml" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/config.yml">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="264">
-              <caret line="12" column="23" lean-forward="true" selection-start-line="12" selection-start-column="23" selection-end-line="12" selection-end-column="23" />
+            <state relative-caret-position="22">
+              <caret line="1" column="10" lean-forward="false" selection-start-line="1" selection-start-column="10" selection-end-line="1" selection-end-column="10" />
               <folding />
             </state>
           </provider>
@@ -132,9 +116,10 @@
         <option value="$PROJECT_DIR$/counters.txt" />
         <option value="$PROJECT_DIR$/config.yaml" />
         <option value="$PROJECT_DIR$/PdhCounter.go" />
+        <option value="$PROJECT_DIR$/config.yml" />
         <option value="$PROJECT_DIR$/config.go" />
         <option value="$PROJECT_DIR$/pdhexport.go" />
-        <option value="$PROJECT_DIR$/config.yml" />
+        <option value="$PROJECT_DIR$/config_example.yml" />
       </list>
     </option>
   </component>
@@ -222,9 +207,8 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1176" extended-state="6" />
-    <editor active="true" />
     <layout>
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.13859275" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.13859275" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Docker" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="false" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="true" content_ui="tabs" />
@@ -233,7 +217,7 @@
       <window_info id="Run" active="false" anchor="bottom" auto_hide="true" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.57758623" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.32950193" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.5996169" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
@@ -255,23 +239,18 @@
     <MESSAGE value="Fixed bug to be able to handle '/' in winpdh definition" />
     <MESSAGE value="Added a file watcher to watch the counters.txt file. When the counters.txt file is changed all current counter collection will be stopped and then counters.txt will be read and processed to start new pdh counter collection." />
     <MESSAGE value="Got the PDH queries all combined into a single query containing all counters" />
-    <option name="LAST_COMMIT_MESSAGE" value="Got the PDH queries all combined into a single query containing all counters" />
+    <MESSAGE value="Converted initialization to use a yaml configuration file to define which counters/hosts to collect" />
+    <MESSAGE value="Made the yaml 'Interval' property functional" />
+    <MESSAGE value="Added example yaml config file. Added gitignore" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added example yaml config file. Added gitignore" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
-      <option name="time" value="75" />
+      <option name="time" value="78" />
     </breakpoint-manager>
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/counters.txt">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="17">
-          <caret line="1" column="42" lean-forward="false" selection-start-line="1" selection-start-column="42" selection-end-line="1" selection-end-column="42" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/../../fsnotify/fsnotify/windows.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="576">
@@ -374,9 +353,7 @@
             <element signature="e#14#287#0" expanded="true" />
             <element signature="e#1581#1670#0" expanded="false" />
             <element signature="n#!!block;n#watchFile#0" expanded="false" />
-            <element signature="n#!!block;n#ReadConfigFile#0" expanded="false" />
             <element signature="n#!!block;n#readCounterConfigFile#0" expanded="false" />
-            <element signature="n#!!block;n#processCounters#0" expanded="false" />
             <element signature="n#!!block;n#counterToPrometheusGauge#0" expanded="false" />
           </folding>
         </state>
@@ -560,6 +537,24 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/config.go">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="462">
+          <caret line="27" column="28" lean-forward="true" selection-start-line="27" selection-start-column="28" selection-end-line="27" selection-end-column="28" />
+          <folding>
+            <element signature="e#78#114#0" expanded="false" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/config.yml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="22">
+          <caret line="1" column="10" lean-forward="false" selection-start-line="1" selection-start-column="10" selection-end-line="1" selection-end-column="10" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/PdhCounter.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="220">
@@ -570,37 +565,25 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/config.go">
+    <entry file="file://$PROJECT_DIR$/config_example.yml">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="220">
-          <caret line="16" column="13" lean-forward="false" selection-start-line="16" selection-start-column="13" selection-end-line="16" selection-end-column="13" />
-          <folding>
-            <element signature="e#78#114#0" expanded="false" />
-          </folding>
+        <state relative-caret-position="22">
+          <caret line="1" column="21" lean-forward="false" selection-start-line="1" selection-start-column="21" selection-end-line="1" selection-end-column="21" />
+          <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/pdhexport.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="567">
-          <caret line="153" column="49" lean-forward="false" selection-start-line="153" selection-start-column="49" selection-end-line="153" selection-end-column="49" />
+        <state relative-caret-position="817">
+          <caret line="228" column="0" lean-forward="true" selection-start-line="228" selection-start-column="0" selection-end-line="228" selection-end-column="0" />
           <folding>
             <element signature="e#14#287#0" expanded="true" />
             <element signature="e#1581#1670#0" expanded="false" />
             <element signature="n#!!block;n#watchFile#0" expanded="false" />
-            <element signature="n#!!block;n#ReadConfigFile#0" expanded="false" />
             <element signature="n#!!block;n#readCounterConfigFile#0" expanded="false" />
-            <element signature="n#!!block;n#processCounters#0" expanded="false" />
             <element signature="n#!!block;n#counterToPrometheusGauge#0" expanded="false" />
           </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/config.yml">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="264">
-          <caret line="12" column="23" lean-forward="true" selection-start-line="12" selection-start-column="23" selection-end-line="12" selection-end-column="23" />
-          <folding />
         </state>
       </provider>
     </entry>
