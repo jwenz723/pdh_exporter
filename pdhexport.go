@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"log"
-	"github.com/lxn/win"
+	//"github.com/lxn/win"
 	"strings"
 	"bufio"
 	"flag"
@@ -13,109 +13,23 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sync"
-	"unsafe"
+	//"unsafe"
 	"regexp"
+	"github.com/lxn/win"
+	"unsafe"
 )
 
 var (
 	addr = flag.String("listen-address", ":8080", "The address to listen on for HTTP requests.")
+	config = flag.String("config", "config.yml", "Path to yml formatted config file.")
 	wg = sync.WaitGroup{}
 	promMetrics = map[string]prometheus.Gauge{}
 )
 
-//type PromPdhCounter struct {
-//	Counter string
-//	PdhCounterHandle win.PDH_HCOUNTER
-//	Instances map[string]prometheus.Gauge
-//}
-
-// The original version of ReadPerformanceCounter() taken from
-// https://github.com/mavlyutov/golagraphite/blob/c41f6d55913190684b277dc7544ee491c9566fdc/perfcounters_windows.go
-//func (p *PromPdhCounter) CollectCounter(done chan struct{}) error {
-//	fmt.Printf("InitializeInstances %s\n", p.Counter)
-//
-//	var queryHandle win.PDH_HQUERY
-//	var counterHandle win.PDH_HCOUNTER
-//
-//	ret := win.PdhOpenQuery(0, 0, &queryHandle)
-//	if ret != win.ERROR_SUCCESS {
-//		return errors.New("Unable to open query through DLL call")
-//	}
-//
-//	// test path
-//	ret = win.PdhValidatePath(p.Counter)
-//	if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
-//		return errors.New("Unable to fetch counter (this is unexpected)")
-//	}
-//
-//	ret = win.PdhAddEnglishCounter(queryHandle, p.Counter, 0, &counterHandle)
-//	if ret != win.ERROR_SUCCESS {
-//		return errors.New(fmt.Sprintf("Unable to process counter. Error code is %x\n", ret))
-//	}
-//
-//	ret = win.PdhCollectQueryData(queryHandle)
-//	if ret != win.ERROR_SUCCESS {
-//		return errors.New(fmt.Sprintf("Got an error: 0x%x\n", ret))
-//	}
-//
-//	for {
-//		ret = win.PdhCollectQueryData(queryHandle)
-//		if ret == win.ERROR_SUCCESS {
-//			var bufSize uint32
-//			var bufCount uint32
-//			var size= uint32(unsafe.Sizeof(win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE{}))
-//			var emptyBuf [1]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE // need at least 1 addressable null ptr.
-//
-//			ret = win.PdhGetFormattedCounterArrayDouble(counterHandle, &bufSize, &bufCount, &emptyBuf[0])
-//			if ret == win.PDH_MORE_DATA {
-//				filledBuf := make([]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE, bufCount*size)
-//				ret = win.PdhGetFormattedCounterArrayDouble(counterHandle, &bufSize, &bufCount, &filledBuf[0])
-//				if ret == win.ERROR_SUCCESS {
-//					for i := 0; i < int(bufCount); i++ {
-//						c := filledBuf[i]
-//						s := win.UTF16PtrToString(c.SzName)
-//
-//						if val, ok := p.Instances[s]; ok {
-//							val.Set(c.FmtValue.DoubleValue)
-//
-//							// uncomment this line to have new values printed to console
-//							//fmt.Printf("%s[%s] : %v\n", p.Counter, s, c.FmtValue.DoubleValue)
-//						} else {
-//							if g, err := counterToPrometheusGauge(p.Counter, s); err == nil {
-//								p.Instances[s] = prometheus.NewGauge(g)
-//								prometheus.MustRegister(p.Instances[s])
-//							} else {
-//								return err
-//							}
-//						}
-//					}
-//				}
-//			}
-//		} else {
-//			fmt.Printf("failed to obtain instances for: %s\n", p.Counter)
-//		}
-//
-//		select{
-//		case <- done:
-//			for k,v := range p.Instances {
-//				prometheus.Unregister(v)
-//				fmt.Printf("unregistered %s[%s]\n", p.Counter, k)
-//			}
-//			return nil
-//		case <- time.After(p.CollectionInterval):
-//			// do nothing
-//		}
-//
-//		win.PdhCloseQuery(queryHandle)
-//	}
-//
-//	return nil
-//}
-
 func main() {
 	flag.Parse()
 
-	const COUNTERS_FILE= "counters.txt"
+	const COUNTERS_FILE= "config.yml"
 	countersFileChangedChan := make(chan struct{})
 	errorsChan := make(chan error)
 	done := make(chan struct{})
@@ -136,9 +50,9 @@ func main() {
 				// reinitialize the done channel to allow collection to restart
 				done = make(chan struct{})
 
-				countersChannel := make(chan string)
-				go readCounterConfigFile(COUNTERS_FILE, countersChannel)
-				go processCounters(countersChannel)
+				setChan := make(chan PdhCounterSet)
+				go ReadConfigFile(COUNTERS_FILE, setChan)
+				go processCounters(setChan)
 			case err := <-errorsChan:
 				fmt.Printf("error occurred while watching %s -> %s\n", COUNTERS_FILE, err)
 				return
@@ -174,12 +88,47 @@ func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan e
 	}
 }
 
-// readCounterConfigFile reads in performance counter strings from file. Each line within
-// the file should contain exactly 1 performance counter.
-// Examples:
-//		All instances of a single counter: \Processor(*)\% Processor Time
-//		A single instance counter: \Processor(_Total)\% Processor Time
-//		A Remote counter: \\myhost\Processor(*)\% Processor Time
+func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
+	processedHostNames := map[string]struct{}{}
+
+	config := NewConfig(file)
+	defer func() {
+		close(countersChannel)
+		fmt.Println("closed countersChannel")
+	}()
+
+	for _, hostName := range config.Pdh_Counters.HostNames {
+		// if the hostname has not already been processed
+		if _, ok := processedHostNames[hostName]; !ok {
+			// mark it as processed
+			processedHostNames[hostName] = struct{}{}
+
+			cSet := PdhCounterSet{
+				Hostname: hostName,
+			}
+
+			// Add into cSet each PdhCounter that has a key that matches the hostname
+			for k, v := range config.Pdh_Counters.Counters {
+				if matched, _ := regexp.MatchString(k, hostName); matched {
+					for _, counter := range v {
+						cSet.Counters = append(cSet.Counters, counter)
+					}
+				}
+			}
+
+			if len(cSet.Counters) > 0 {
+				countersChannel <- cSet
+				fmt.Printf("sent counter cSet for host: %s\n", hostName)
+			}
+		}
+	}
+}
+
+type PdhCounterSet struct {
+	Hostname string
+	Counters []PdhCounter
+}
+
 func readCounterConfigFile(file string, countersChannel chan string) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -202,94 +151,100 @@ func readCounterConfigFile(file string, countersChannel chan string) {
 // processCounters receives counters in countersChan and the processes them to be
 // collected and published. The done channel can be used to stop collection of
 // all initialized counters.
-func processCounters(countersChannel chan string) {
-	var queryHandle win.PDH_HQUERY
-	counterHandles := map[string]*win.PDH_HCOUNTER{}
+func processCounters(setChan chan PdhCounterSet) {
+	for s := range setChan {
+		go func(cSet PdhCounterSet) {
+			fmt.Printf("Processing set for host: %s\n", cSet.Hostname)
 
-	ret := win.PdhOpenQuery(0, 0, &queryHandle)
-	if ret != win.ERROR_SUCCESS {
-		fmt.Printf("failed PdhOpenQuery, %x\n", ret)
-	} else {
-		for counter := range countersChannel {
-			var c win.PDH_HCOUNTER
-			ret = win.PdhValidatePath(counter)
-			if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
-				fmt.Printf("failed PdhValidatePath, %s, %x\n", counter, ret)
-				continue
-			}
+			var queryHandle win.PDH_HQUERY
+			counterHandles := map[string]*win.PDH_HCOUNTER{}
 
-			ret = win.PdhAddEnglishCounter(queryHandle, counter, 0, &c)
+			ret := win.PdhOpenQuery(0, 0, &queryHandle)
 			if ret != win.ERROR_SUCCESS {
-				if ret != win.PDH_CSTATUS_NO_OBJECT {
-					fmt.Printf("failed PdhAddEnglishCounter, %s, %x\n", counter, ret)
+				fmt.Printf("failed PdhOpenQuery, %x\n", ret)
+			} else {
+				for _, c := range cSet.Counters {
+					counter := fmt.Sprintf("\\\\%s%s", cSet.Hostname, c.Path)
+					var c win.PDH_HCOUNTER
+					ret = win.PdhValidatePath(counter)
+					if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
+						fmt.Printf("failed PdhValidatePath, %s, %x\n", counter, ret)
+						continue
+					}
+
+					ret = win.PdhAddEnglishCounter(queryHandle, counter, 0, &c)
+					if ret != win.ERROR_SUCCESS {
+						if ret != win.PDH_CSTATUS_NO_OBJECT {
+							fmt.Printf("failed PdhAddEnglishCounter, %s, %x\n", counter, ret)
+						}
+						continue
+					}
+
+					counterHandles[counter] = &c
 				}
-				continue
-			}
 
-			counterHandles[counter] = &c
-		}
-
-		ret = win.PdhCollectQueryData(queryHandle)
-		if ret != win.ERROR_SUCCESS {
-			fmt.Printf("failed PdhCollectQueryData, %x\n", ret)
-		} else {
-			for {
-				ret := win.PdhCollectQueryData(queryHandle)
-				if ret == win.ERROR_SUCCESS {
-					for k, v := range counterHandles {
-						var bufSize uint32
-						var bufCount uint32
-						var size= uint32(unsafe.Sizeof(win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE{}))
-						var emptyBuf [1]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE // need at least 1 addressable null ptr.
-
-						ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &emptyBuf[0])
-						if ret == win.PDH_MORE_DATA {
-							filledBuf := make([]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE, bufCount*size)
-							ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &filledBuf[0])
+				ret = win.PdhCollectQueryData(queryHandle)
+				if ret != win.ERROR_SUCCESS {
+					fmt.Printf("failed PdhCollectQueryData, %x\n", ret)
+				} else {
+					go func() {
+						for {
+							ret := win.PdhCollectQueryData(queryHandle)
 							if ret == win.ERROR_SUCCESS {
-								for i := 0; i < int(bufCount); i++ {
-									c := filledBuf[i]
-									s := win.UTF16PtrToString(c.SzName)
+								for k, v := range counterHandles {
+									var bufSize uint32
+									var bufCount uint32
+									var size = uint32(unsafe.Sizeof(win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE{}))
+									var emptyBuf [1]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE // need at least 1 addressable null ptr.
 
-									if val, ok := promMetrics[k + s]; ok {
-										val.Set(c.FmtValue.DoubleValue)
+									ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &emptyBuf[0])
+									if ret == win.PDH_MORE_DATA {
+										filledBuf := make([]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE, bufCount*size)
+										ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &filledBuf[0])
+										if ret == win.ERROR_SUCCESS {
+											for i := 0; i < int(bufCount); i++ {
+												c := filledBuf[i]
+												s := win.UTF16PtrToString(c.SzName)
 
-										// uncomment this line to have new values printed to console
-										//fmt.Printf("%s[%s] : %v\n", p.Counter, s, c.FmtValue.DoubleValue)
-									} else {
-										if g, err := counterToPrometheusGauge(k, s); err == nil {
-											promMetrics[k + s] = prometheus.NewGauge(g)
-											prometheus.MustRegister(promMetrics[k + s])
-										} else {
-											fmt.Printf("failed counterToPrometheusGauge, %s, %s\n", k, err)
+												if val, ok := promMetrics[k+s]; ok {
+													val.Set(c.FmtValue.DoubleValue)
+
+													// uncomment this line to have new values printed to console
+													//fmt.Printf("%s[%s] : %v\n", p.Counter, s, c.FmtValue.DoubleValue)
+												} else {
+													if g, err := counterToPrometheusGauge(k, s); err == nil {
+														promMetrics[k+s] = prometheus.NewGauge(g)
+														prometheus.MustRegister(promMetrics[k+s])
+													} else {
+														fmt.Printf("failed counterToPrometheusGauge, %s, %s\n", k, err)
+													}
+												}
+											}
 										}
 									}
 								}
 							}
-						}
-					}
-				}
 
-				time.Sleep(5 * time.Second)
+							time.Sleep(1 * time.Second)
+						}
+					}()
+				}
 			}
-		}
+		}(s)
 	}
 }
 
 // counterToPrometheusGauge converts a windows performance counter string into
-// a prometheus Gauge. Prometheus Naming Conventions: https://prometheus.io/docs/concepts/data_model/
+// a prometheus Gauge.
+//
+// According to https://prometheus.io/docs/concepts/data_model/
+// 		- Prometheus Metric Names must match: [a-zA-Z_:][a-zA-Z0-9_:]*
+//		- Prometheus Label Restrictions:
+// 			- Label names must match: [a-zA-Z_][a-zA-Z0-9_]*
+//			- Label values: may contain any Unicode characters
+//
+// Additional Prometheus Metric/Label naming conventions: https://prometheus.io/docs/practices/naming/
 func counterToPrometheusGauge(counter, instance string) (prometheus.GaugeOpts, error) {
-	// Replace known runes that occur in winpdh
-	r := strings.NewReplacer(
-		".", "_",
-		"-", "_",
-		" ", "_",
-		"/","_",
-		"%", "percent",
-	)
-	counter = r.Replace(counter)
-	instance = r.Replace(instance)
-
 	fields := strings.Split(counter, "\\")
 	hostname := "localhost"
 	catIndex := 1
@@ -314,6 +269,17 @@ func counterToPrometheusGauge(counter, instance string) (prometheus.GaugeOpts, e
 		category = fields[catIndex]
 	}
 
+	// Replace known runes that occur in winpdh
+	r := strings.NewReplacer(
+		".", "_",
+		"-", "_",
+		" ", "_",
+		"/","_",
+		"%", "percent",
+	)
+	counterName := r.Replace(fields[valIndex])
+	instance = r.Replace(instance)
+
 	// Use this regex to replace any invalid characters that weren't accounted for already
 	reg, err := regexp.Compile("[^a-zA-Z0-9_:]")
 	if err != nil {
@@ -321,9 +287,9 @@ func counterToPrometheusGauge(counter, instance string) (prometheus.GaugeOpts, e
 	}
 
 	return prometheus.GaugeOpts{
-		ConstLabels: prometheus.Labels{"hostname": string(reg.ReplaceAll([]byte(hostname),[]byte(""))), "pdhcategory": string(reg.ReplaceAll([]byte(category),[]byte(""))), "pdhinstance": string(reg.ReplaceAll([]byte(instance),[]byte("")))},
+		ConstLabels: prometheus.Labels{"hostname": hostname, "pdhcategory": string(reg.ReplaceAll([]byte(category),[]byte(""))), "pdhinstance": string(reg.ReplaceAll([]byte(instance),[]byte("")))},
 		Help: "windows performance counter",
-		Name: string(reg.ReplaceAll([]byte(fields[valIndex]),[]byte(""))),
+		Name: string(reg.ReplaceAll([]byte(counterName),[]byte(""))),
 		Namespace:"winpdh",
 	}, nil
 }

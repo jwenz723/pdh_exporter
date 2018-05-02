@@ -1,518 +1,108 @@
-\Processor(*)\% Processor Time
-\Processor(*)\% User Time
-\Processor(*)\% Privileged Time
-\Processor(*)\Interrupts/sec
-\Processor(*)\% DPC Time
-\Processor(*)\% Interrupt Time
-\Processor(*)\DPCs Queued/sec
-\Processor(*)\DPC Rate
-\Processor(*)\% Idle Time
-\Processor(*)\% C1 Time
-\Processor(*)\% C2 Time
-\Processor(*)\% C3 Time
-\Processor(*)\C1 Transitions/sec
-\Processor(*)\C2 Transitions/sec
-\Processor(*)\C3 Transitions/sec
-\Memory\Page Faults/sec
-\Memory\Available Bytes
-\Memory\Committed Bytes
-\Memory\Commit Limit
-\Memory\Write Copies/sec
-\Memory\Transition Faults/sec
-\Memory\Cache Faults/sec
-\Memory\Demand Zero Faults/sec
-\Memory\Pages/sec
-\Memory\Pages Input/sec
-\Memory\Page Reads/sec
-\Memory\Pages Output/sec
-\Memory\Pool Paged Bytes
-\Memory\Pool Nonpaged Bytes
-\Memory\Page Writes/sec
-\Memory\Pool Paged Allocs
-\Memory\Pool Nonpaged Allocs
-\Memory\Free System Page Table Entries
-\Memory\Cache Bytes
-\Memory\Cache Bytes Peak
-\Memory\Pool Paged Resident Bytes
-\Memory\System Code Total Bytes
-\Memory\System Code Resident Bytes
-\Memory\System Driver Total Bytes
-\Memory\System Driver Resident Bytes
-\Memory\System Cache Resident Bytes
-\Memory\% Committed Bytes In Use
-\Memory\Available KBytes
-\Memory\Available MBytes
-\Memory\Transition Pages RePurposed/sec
-\Memory\Free & Zero Page List Bytes
-\Memory\Modified Page List Bytes
-\Memory\Standby Cache Reserve Bytes
-\Memory\Standby Cache Normal Priority Bytes
-\Memory\Standby Cache Core Bytes
-\Memory\Long-Term Average Standby Cache Lifetime (s)
-\Objects\Processes
-\Objects\Threads
-\Objects\Events
-\Objects\Semaphores
-\Objects\Mutexes
-\Objects\Sections
-\Paging File(*)\% Usage
-\Paging File(*)\% Usage Peak
-\System\File Read Operations/sec
-\System\File Write Operations/sec
-\System\File Control Operations/sec
-\System\File Read Bytes/sec
-\System\File Write Bytes/sec
-\System\File Control Bytes/sec
-\System\Context Switches/sec
-\System\System Calls/sec
-\System\File Data Operations/sec
-\System\System Up Time
-\System\Processor Queue Length
-\System\Processes
-\System\Threads
-\System\Alignment Fixups/sec
-\System\Exception Dispatches/sec
-\System\Floating Emulations/sec
-\System\% Registry Quota In Use
-\NUMA Node Memory(*)\Total MBytes
-\NUMA Node Memory(*)\Free & Zero Page List MBytes
-\NUMA Node Memory(*)\Standby List MBytes
-\NUMA Node Memory(*)\Available MBytes
-\Process(*)\% Processor Time
-\Process(*)\% User Time
-\Process(*)\% Privileged Time
-\Process(*)\Virtual Bytes Peak
-\Process(*)\Virtual Bytes
-\Process(*)\Page Faults/sec
-\Process(*)\Working Set Peak
-\Process(*)\Working Set
-\Process(*)\Page File Bytes Peak
-\Process(*)\Page File Bytes
-\Process(*)\Private Bytes
-\Process(*)\Thread Count
-\Process(*)\Priority Base
-\Process(*)\Elapsed Time
-\Process(*)\ID Process
-\Process(*)\Creating Process ID
-\Process(*)\Pool Paged Bytes
-\Process(*)\Pool Nonpaged Bytes
-\Process(*)\Handle Count
-\Process(*)\IO Read Operations/sec
-\Process(*)\IO Write Operations/sec
-\Process(*)\IO Data Operations/sec
-\Process(*)\IO Other Operations/sec
-\Process(*)\IO Read Bytes/sec
-\Process(*)\IO Write Bytes/sec
-\Process(*)\IO Data Bytes/sec
-\Process(*)\IO Other Bytes/sec
-\Process(*)\Working Set - Private
-\Thread(*)\Context Switches/sec
-\Thread(*)\% Processor Time
-\Thread(*)\% User Time
-\Thread(*)\% Privileged Time
-\Thread(*)\Elapsed Time
-\Thread(*)\Priority Current
-\Thread(*)\Priority Base
-\Thread(*)\Start Address
-\Thread(*)\Thread State
-\Thread(*)\Thread Wait Reason
-\Thread(*)\ID Process
-\Thread(*)\ID Thread
-\Job Object(*)\Current % Processor Time
-\Job Object(*)\Current % User Mode Time
-\Job Object(*)\Current % Kernel Mode Time
-\Job Object(*)\This Period mSec - Processor
-\Job Object(*)\This Period mSec - User Mode
-\Job Object(*)\This Period mSec - Kernel Mode
-\Job Object(*)\Total mSec - Processor
-\Job Object(*)\Total mSec - User Mode
-\Job Object(*)\Total mSec - Kernel Mode
-\Job Object(*)\Pages/Sec
-\Job Object(*)\Process Count - Total
-\Job Object(*)\Process Count - Active
-\Job Object(*)\Process Count - Terminated
-\Job Object Details(*)\% Processor Time
-\Job Object Details(*)\% User Time
-\Job Object Details(*)\% Privileged Time
-\Job Object Details(*)\Virtual Bytes Peak
-\Job Object Details(*)\Virtual Bytes
-\Job Object Details(*)\Page Faults/sec
-\Job Object Details(*)\Working Set Peak
-\Job Object Details(*)\Working Set
-\Job Object Details(*)\Page File Bytes Peak
-\Job Object Details(*)\Page File Bytes
-\Job Object Details(*)\Private Bytes
-\Job Object Details(*)\Thread Count
-\Job Object Details(*)\Priority Base
-\Job Object Details(*)\Elapsed Time
-\Job Object Details(*)\ID Process
-\Job Object Details(*)\Creating Process ID
-\Job Object Details(*)\Pool Paged Bytes
-\Job Object Details(*)\Pool Nonpaged Bytes
-\Job Object Details(*)\Handle Count
-\Job Object Details(*)\IO Read Operations/sec
-\Job Object Details(*)\IO Write Operations/sec
-\Job Object Details(*)\IO Data Operations/sec
-\Job Object Details(*)\IO Other Operations/sec
-\Job Object Details(*)\IO Read Bytes/sec
-\Job Object Details(*)\IO Write Bytes/sec
-\Job Object Details(*)\IO Data Bytes/sec
-\Job Object Details(*)\IO Other Bytes/sec
-\ReadyBoost Cache\Bytes cached
-\ReadyBoost Cache\Cache space used
-\ReadyBoost Cache\Compression Ratio
-\ReadyBoost Cache\Total cache size bytes
-\ReadyBoost Cache\Cache reads/sec
-\ReadyBoost Cache\Cache read bytes/sec
-\ReadyBoost Cache\Skipped reads/sec
-\ReadyBoost Cache\Skipped read bytes/sec
-\ReadyBoost Cache\Total reads/sec
-\ReadyBoost Cache\Total read bytes/sec
-\RAS Port(*)\Bytes Transmitted
-\RAS Port(*)\Bytes Received
-\RAS Port(*)\Frames Transmitted
-\RAS Port(*)\Frames Received
-\RAS Port(*)\Percent Compression Out
-\RAS Port(*)\Percent Compression In
-\RAS Port(*)\CRC Errors
-\RAS Port(*)\Timeout Errors
-\RAS Port(*)\Serial Overrun Errors
-\RAS Port(*)\Alignment Errors
-\RAS Port(*)\Buffer Overrun Errors
-\RAS Port(*)\Total Errors
-\RAS Port(*)\Bytes Transmitted/Sec
-\RAS Port(*)\Bytes Received/Sec
-\RAS Port(*)\Frames Transmitted/Sec
-\RAS Port(*)\Frames Received/Sec
-\RAS Port(*)\Total Errors/Sec
-\RAS Total\Bytes Transmitted
-\RAS Total\Bytes Received
-\RAS Total\Frames Transmitted
-\RAS Total\Frames Received
-\RAS Total\Percent Compression Out
-\RAS Total\Percent Compression In
-\RAS Total\CRC Errors
-\RAS Total\Timeout Errors
-\RAS Total\Serial Overrun Errors
-\RAS Total\Alignment Errors
-\RAS Total\Buffer Overrun Errors
-\RAS Total\Total Errors
-\RAS Total\Bytes Transmitted/Sec
-\RAS Total\Bytes Received/Sec
-\RAS Total\Frames Transmitted/Sec
-\RAS Total\Frames Received/Sec
-\RAS Total\Total Errors/Sec
-\RAS Total\Total Connections
-\.NET Data Provider for MySQL\HardProcedureQueries
-\.NET Data Provider for MySQL\SoftProcedureQueries
-\.NET Data Provider for Oracle(*)\HardConnectsPerSecond
-\.NET Data Provider for Oracle(*)\HardDisconnectsPerSecond
-\.NET Data Provider for Oracle(*)\SoftConnectsPerSecond
-\.NET Data Provider for Oracle(*)\SoftDisconnectsPerSecond
-\.NET Data Provider for Oracle(*)\NumberOfNonPooledConnections
-\.NET Data Provider for Oracle(*)\NumberOfPooledConnections
-\.NET Data Provider for Oracle(*)\NumberOfActiveConnectionPoolGroups
-\.NET Data Provider for Oracle(*)\NumberOfInactiveConnectionPoolGroups
-\.NET Data Provider for Oracle(*)\NumberOfActiveConnectionPools
-\.NET Data Provider for Oracle(*)\NumberOfInactiveConnectionPools
-\.NET Data Provider for Oracle(*)\NumberOfActiveConnections
-\.NET Data Provider for Oracle(*)\NumberOfFreeConnections
-\.NET Data Provider for Oracle(*)\NumberOfStasisConnections
-\.NET Data Provider for Oracle(*)\NumberOfReclaimedConnections
-\.NET Data Provider for SqlServer(*)\HardConnectsPerSecond
-\.NET Data Provider for SqlServer(*)\HardDisconnectsPerSecond
-\.NET Data Provider for SqlServer(*)\SoftConnectsPerSecond
-\.NET Data Provider for SqlServer(*)\SoftDisconnectsPerSecond
-\.NET Data Provider for SqlServer(*)\NumberOfNonPooledConnections
-\.NET Data Provider for SqlServer(*)\NumberOfPooledConnections
-\.NET Data Provider for SqlServer(*)\NumberOfActiveConnectionPoolGroups
-\.NET Data Provider for SqlServer(*)\NumberOfInactiveConnectionPoolGroups
-\.NET Data Provider for SqlServer(*)\NumberOfActiveConnectionPools
-\.NET Data Provider for SqlServer(*)\NumberOfInactiveConnectionPools
-\.NET Data Provider for SqlServer(*)\NumberOfActiveConnections
-\.NET Data Provider for SqlServer(*)\NumberOfFreeConnections
-\.NET Data Provider for SqlServer(*)\NumberOfStasisConnections
-\.NET Data Provider for SqlServer(*)\NumberOfReclaimedConnections
-\.NET Memory Cache 4.0(*)\Cache Hits
-\.NET Memory Cache 4.0(*)\Cache Misses
-\.NET Memory Cache 4.0(*)\Cache Hit Ratio
-\.NET Memory Cache 4.0(*)\Cache Trims
-\.NET Memory Cache 4.0(*)\Cache Entries
-\.NET Memory Cache 4.0(*)\Cache Turnover Rate
-\Print Queue(*)\Total Jobs Printed
-\Print Queue(*)\Bytes Printed/sec
-\Print Queue(*)\Total Pages Printed
-\Print Queue(*)\Jobs
-\Print Queue(*)\References
-\Print Queue(*)\Max References
-\Print Queue(*)\Jobs Spooling
-\Print Queue(*)\Max Jobs Spooling
-\Print Queue(*)\Out of Paper Errors
-\Print Queue(*)\Not Ready Errors
-\Print Queue(*)\Job Errors
-\Print Queue(*)\Enumerate Network Printer Calls
-\Print Queue(*)\Add Network Printer Calls
-\NBT Connection(*)\Bytes Received/sec
-\NBT Connection(*)\Bytes Sent/sec
-\NBT Connection(*)\Bytes Total/sec
-\Network Interface(*)\Bytes Total/sec
-\Network Interface(*)\Packets/sec
-\Network Interface(*)\Packets Received/sec
-\Network Interface(*)\Packets Sent/sec
-\Network Interface(*)\Current Bandwidth
-\Network Interface(*)\Bytes Received/sec
-\Network Interface(*)\Packets Received Unicast/sec
-\Network Interface(*)\Packets Received Non-Unicast/sec
-\Network Interface(*)\Packets Received Discarded
-\Network Interface(*)\Packets Received Errors
-\Network Interface(*)\Packets Received Unknown
-\Network Interface(*)\Bytes Sent/sec
-\Network Interface(*)\Packets Sent Unicast/sec
-\Network Interface(*)\Packets Sent Non-Unicast/sec
-\Network Interface(*)\Packets Outbound Discarded
-\Network Interface(*)\Packets Outbound Errors
-\Network Interface(*)\Output Queue Length
-\Network Interface(*)\Offloaded Connections
-\Network Interface(*)\TCP Active RSC Connections
-\Network Interface(*)\TCP RSC Coalesced Packets/sec
-\Network Interface(*)\TCP RSC Exceptions/sec
-\Network Interface(*)\TCP RSC Average Packet Size
-\Network Adapter(*)\Bytes Total/sec
-\Network Adapter(*)\Packets/sec
-\Network Adapter(*)\Packets Received/sec
-\Network Adapter(*)\Packets Sent/sec
-\Network Adapter(*)\Current Bandwidth
-\Network Adapter(*)\Bytes Received/sec
-\Network Adapter(*)\Packets Received Unicast/sec
-\Network Adapter(*)\Packets Received Non-Unicast/sec
-\Network Adapter(*)\Packets Received Discarded
-\Network Adapter(*)\Packets Received Errors
-\Network Adapter(*)\Packets Received Unknown
-\Network Adapter(*)\Bytes Sent/sec
-\Network Adapter(*)\Packets Sent Unicast/sec
-\Network Adapter(*)\Packets Sent Non-Unicast/sec
-\Network Adapter(*)\Packets Outbound Discarded
-\Network Adapter(*)\Packets Outbound Errors
-\Network Adapter(*)\Output Queue Length
-\Network Adapter(*)\Offloaded Connections
-\Network Adapter(*)\TCP Active RSC Connections
-\Network Adapter(*)\TCP RSC Coalesced Packets/sec
-\Network Adapter(*)\TCP RSC Exceptions/sec
-\Network Adapter(*)\TCP RSC Average Packet Size
-\IPv4\Datagrams/sec
-\IPv4\Datagrams Received/sec
-\IPv4\Datagrams Received Header Errors
-\IPv4\Datagrams Received Address Errors
-\IPv4\Datagrams Forwarded/sec
-\IPv4\Datagrams Received Unknown Protocol
-\IPv4\Datagrams Received Discarded
-\IPv4\Datagrams Received Delivered/sec
-\IPv4\Datagrams Sent/sec
-\IPv4\Datagrams Outbound Discarded
-\IPv4\Datagrams Outbound No Route
-\IPv4\Fragments Received/sec
-\IPv4\Fragments Re-assembled/sec
-\IPv4\Fragment Re-assembly Failures
-\IPv4\Fragmented Datagrams/sec
-\IPv4\Fragmentation Failures
-\IPv4\Fragments Created/sec
-\ICMP\Messages/sec
-\ICMP\Messages Received/sec
-\ICMP\Messages Received Errors
-\ICMP\Received Dest. Unreachable
-\ICMP\Received Time Exceeded
-\ICMP\Received Parameter Problem
-\ICMP\Received Source Quench
-\ICMP\Received Redirect/sec
-\ICMP\Received Echo/sec
-\ICMP\Received Echo Reply/sec
-\ICMP\Received Timestamp/sec
-\ICMP\Received Timestamp Reply/sec
-\ICMP\Received Address Mask
-\ICMP\Received Address Mask Reply
-\ICMP\Messages Sent/sec
-\ICMP\Messages Outbound Errors
-\ICMP\Sent Destination Unreachable
-\ICMP\Sent Time Exceeded
-\ICMP\Sent Parameter Problem
-\ICMP\Sent Source Quench
-\ICMP\Sent Redirect/sec
-\ICMP\Sent Echo/sec
-\ICMP\Sent Echo Reply/sec
-\ICMP\Sent Timestamp/sec
-\ICMP\Sent Timestamp Reply/sec
-\ICMP\Sent Address Mask
-\ICMP\Sent Address Mask Reply
-\TCPv4\Segments/sec
-\TCPv4\Connections Established
-\TCPv4\Connections Active
-\TCPv4\Connections Passive
-\TCPv4\Connection Failures
-\TCPv4\Connections Reset
-\TCPv4\Segments Received/sec
-\TCPv4\Segments Sent/sec
-\TCPv4\Segments Retransmitted/sec
-\UDPv4\Datagrams/sec
-\UDPv4\Datagrams Received/sec
-\UDPv4\Datagrams No Port/sec
-\UDPv4\Datagrams Received Errors
-\UDPv4\Datagrams Sent/sec
-\IPv6\Datagrams/sec
-\IPv6\Datagrams Received/sec
-\IPv6\Datagrams Received Header Errors
-\IPv6\Datagrams Received Address Errors
-\IPv6\Datagrams Forwarded/sec
-\IPv6\Datagrams Received Unknown Protocol
-\IPv6\Datagrams Received Discarded
-\IPv6\Datagrams Received Delivered/sec
-\IPv6\Datagrams Sent/sec
-\IPv6\Datagrams Outbound Discarded
-\IPv6\Datagrams Outbound No Route
-\IPv6\Fragments Received/sec
-\IPv6\Fragments Re-assembled/sec
-\IPv6\Fragment Re-assembly Failures
-\IPv6\Fragmented Datagrams/sec
-\IPv6\Fragmentation Failures
-\IPv6\Fragments Created/sec
-\ICMPv6\Messages/sec
-\ICMPv6\Messages Received/sec
-\ICMPv6\Messages Received Errors
-\ICMPv6\Received Dest. Unreachable
-\ICMPv6\Received Packet Too Big
-\ICMPv6\Received Time Exceeded
-\ICMPv6\Received Parameter Problem
-\ICMPv6\Received Echo/sec
-\ICMPv6\Received Echo Reply/sec
-\ICMPv6\Received Membership Query
-\ICMPv6\Received Membership Report
-\ICMPv6\Received Membership Reduction
-\ICMPv6\Received Router Solicit
-\ICMPv6\Received Router Advert
-\ICMPv6\Received Neighbor Solicit
-\ICMPv6\Received Neighbor Advert
-\ICMPv6\Received Redirect/sec
-\ICMPv6\Messages Sent/sec
-\ICMPv6\Messages Outbound Errors
-\ICMPv6\Sent Destination Unreachable
-\ICMPv6\Sent Packet Too Big
-\ICMPv6\Sent Time Exceeded
-\ICMPv6\Sent Parameter Problem
-\ICMPv6\Sent Echo/sec
-\ICMPv6\Sent Echo Reply/sec
-\ICMPv6\Sent Membership Query
-\ICMPv6\Sent Membership Report
-\ICMPv6\Sent Membership Reduction
-\ICMPv6\Sent Router Solicit
-\ICMPv6\Sent Router Advert
-\ICMPv6\Sent Neighbor Solicit
-\ICMPv6\Sent Neighbor Advert
-\ICMPv6\Sent Redirect/sec
-\TCPv6\Segments/sec
-\TCPv6\Connections Established
-\TCPv6\Connections Active
-\TCPv6\Connections Passive
-\TCPv6\Connection Failures
-\TCPv6\Connections Reset
-\TCPv6\Segments Received/sec
-\TCPv6\Segments Sent/sec
-\TCPv6\Segments Retransmitted/sec
-\UDPv6\Datagrams/sec
-\UDPv6\Datagrams Received/sec
-\UDPv6\Datagrams No Port/sec
-\UDPv6\Datagrams Received Errors
-\UDPv6\Datagrams Sent/sec
-\Terminal Services Session(*)\% Processor Time
-\Terminal Services Session(*)\% User Time
-\Terminal Services Session(*)\% Privileged Time
-\Terminal Services Session(*)\Virtual Bytes Peak
-\Terminal Services Session(*)\Virtual Bytes
-\Terminal Services Session(*)\Page Faults/sec
-\Terminal Services Session(*)\Working Set Peak
-\Terminal Services Session(*)\Working Set
-\Terminal Services Session(*)\Page File Bytes Peak
-\Terminal Services Session(*)\Page File Bytes
-\Terminal Services Session(*)\Private Bytes
-\Terminal Services Session(*)\Thread Count
-\Terminal Services Session(*)\Pool Paged Bytes
-\Terminal Services Session(*)\Pool Nonpaged Bytes
-\Terminal Services Session(*)\Handle Count
-\USB(*)\Bulk Bytes/Sec
-\USB(*)\Isochronous Bytes/Sec
-\USB(*)\Interrupt Bytes/Sec
-\USB(*)\Control Data Bytes/Sec
-\USB(*)\Controller PCI Interrupts/Sec
-\USB(*)\Controller WorkSignals/Sec
-\USB(*)\% Total Bandwidth Used for Interrupt
-\USB(*)\% Total Bandwidth Used for Iso
-\USB(*)\Avg. Bytes/Transfer
-\USB(*)\Iso Packet Errors/Sec
-\USB(*)\Avg ms latency for ISO transfers
-\USB(*)\Transfer Errors/Sec
-\USB(*)\Host Controller Idle
-\USB(*)\Host Controller Async Idle
-\USB(*)\Host Controller Async Cache Flush Count
-\USB(*)\Host Controller Periodic Idle
-\USB(*)\Host Controller Periodic Cache Flush Count
-\Search Indexer(*)\Master Index Level.
-\Search Indexer(*)\Master Merges to Date
-\Search Indexer(*)\Master Merge Progress
-\Search Indexer(*)\Shadow Merge Levels
-\Search Indexer(*)\Shadow Merge Levels Threshold
-\Search Indexer(*)\Persistent Indexes
-\Search Indexer(*)\Index Size
-\Search Indexer(*)\Unique Keys
-\Search Indexer(*)\Documents Filtered
-\Search Indexer(*)\Work Items Created
-\Search Indexer(*)\Work Items Deleted
-\Search Indexer(*)\Clean WidSets
-\Search Indexer(*)\Dirty WidSets
-\Search Indexer(*)\Master Merges Now.
-\Search Indexer(*)\Active Connections
-\Search Indexer(*)\Queries
-\Search Indexer(*)\Queries Failed
-\Search Indexer(*)\Queries Succeeded
-\Search Indexer(*)\L0 Indexes (Wordlists)
-\Search Indexer(*)\L0 Merges (flushes) Now.
-\Search Indexer(*)\L0 Merge (Flush) Speed - Average
-\Search Indexer(*)\L0 Merge (Flush) - Count
-\Search Indexer(*)\L0 Merge (Flush) Speed - Last
-\Search Indexer(*)\Persistent Indexes L1
-\Search Indexer(*)\L1 Merges Now.
-\Search Indexer(*)\L1 Merge Speed - average
-\Search Indexer(*)\L1 Merge - Count
-\Search Indexer(*)\L1 Merge Speed - last
-\Search Indexer(*)\Persistent Indexes L2
-\Search Indexer(*)\L2 Merges Now.
-\Search Indexer(*)\L2 Merge Speed - average
-\Search Indexer(*)\L2 Merge - Count
-\Search Indexer(*)\L2 Merge Speed - last
-\Search Indexer(*)\Persistent Indexes L3
-\Search Indexer(*)\L3 Merges Now.
-\Search Indexer(*)\L3 Merge Speed - average
-\Search Indexer(*)\L3 Merge - Count
-\Search Indexer(*)\L3 Merge Speed - last
-\Search Indexer(*)\Persistent Indexes L4
-\Search Indexer(*)\L4 Merges Now.
-\Search Indexer(*)\L4 Merge Speed - average
-\Search Indexer(*)\L4 Merge - Count
-\Search Indexer(*)\L4 Merge Speed - last
-\Search Indexer(*)\Persistent Indexes L5
-\Search Indexer(*)\L5 Merges Now.
-\Search Indexer(*)\L5 Merge Speed - average
-\Search Indexer(*)\L5 Merge - Count
-\Search Indexer(*)\L5 Merge Speed - last
-\Search Indexer(*)\Persistent Indexes L6
-\Search Indexer(*)\L6 Merges Now.
-\Search Indexer(*)\L6 Merge Speed - average
-\Search Indexer(*)\L6 Merge - Count
-\Search Indexer(*)\L6 Merge Speed - last
-\Search Indexer(*)\Persistent Indexes L7
-\Search Indexer(*)\L7 Merges Now.
-\Search Indexer(*)\L7 Merge Speed - average
-\Search Indexer(*)\L7 Merge - Count
-\Search Indexer(*)\L7 Merge Speed - last
-\Search Indexer(*)\Persistent Indexes L8
-\Search Indexer(*)\L8 Merges Now.
-\Search Indexer(*)\L8 Merge Speed - average
-\Search Indexer(*)\L8 Merge - Count
-\Search Indexer(*)\L8 Merge Speed - last
+\\eng-indch01\Processor(*)\% Processor Time
+\\eng-indch01\Processor(*)\% User Time
+\\eng-indch01\Processor(*)\% Privileged Time
+\\eng-indch01\Processor(*)\Interrupts/sec
+\\eng-indch01\Processor(*)\% DPC Time
+\\eng-indch01\Processor(*)\% Interrupt Time
+\\eng-indch01\Processor(*)\DPCs Queued/sec
+\\eng-indch01\Processor(*)\DPC Rate
+\\eng-indch01\Processor(*)\% Idle Time
+\\eng-indch01\Processor(*)\% C1 Time
+\\eng-indch01\Processor(*)\% C2 Time
+\\eng-indch01\Processor(*)\% C3 Time
+\\eng-indch01\Processor(*)\C1 Transitions/sec
+\\eng-indch01\Processor(*)\C2 Transitions/sec
+\\eng-indch01\Processor(*)\C3 Transitions/sec
+\\eng-indch01\Memory\Page Faults/sec
+\\eng-indch01\Memory\Available Bytes
+\\eng-indch01\Memory\Committed Bytes
+\\eng-indch01\Memory\Commit Limit
+\\eng-indch01\Memory\Write Copies/sec
+\\eng-indch01\Memory\Transition Faults/sec
+\\eng-indch01\Memory\Cache Faults/sec
+\\eng-indch01\Memory\Demand Zero Faults/sec
+\\eng-indch01\Memory\Pages/sec
+\\eng-indch01\Memory\Pages Input/sec
+\\eng-indch01\Memory\Page Reads/sec
+\\eng-indch01\Memory\Pages Output/sec
+\\eng-indch01\Memory\Pool Paged Bytes
+\\eng-indch01\Memory\Pool Nonpaged Bytes
+\\eng-indch01\Memory\Page Writes/sec
+\\eng-indch01\Memory\Pool Paged Allocs
+\\eng-indch01\Memory\Pool Nonpaged Allocs
+\\eng-indch01\Memory\Free System Page Table Entries
+\\eng-indch01\Memory\Cache Bytes
+\\eng-indch01\Memory\Cache Bytes Peak
+\\eng-indch01\Memory\Pool Paged Resident Bytes
+\\eng-indch01\Memory\System Code Total Bytes
+\\eng-indch01\Memory\System Code Resident Bytes
+\\eng-indch01\Memory\System Driver Total Bytes
+\\eng-indch01\Memory\System Driver Resident Bytes
+\\eng-indch01\Memory\System Cache Resident Bytes
+\\eng-indch01\Memory\% Committed Bytes In Use
+\\eng-indch01\Memory\Available KBytes
+\\eng-indch01\Memory\Available MBytes
+\\eng-indch01\Memory\Transition Pages RePurposed/sec
+\\eng-indch01\Memory\Free & Zero Page List Bytes
+\\eng-indch01\Memory\Modified Page List Bytes
+\\eng-indch01\Memory\Standby Cache Reserve Bytes
+\\eng-indch01\Memory\Standby Cache Normal Priority Bytes
+\\eng-indch01\Memory\Standby Cache Core Bytes
+\\eng-indch01\Memory\Long-Term Average Standby Cache Lifetime (s)
+\\eng-indch01\Objects\Processes
+\\eng-indch01\Objects\Threads
+\\eng-indch01\Objects\Events
+\\eng-indch01\Objects\Semaphores
+\\eng-indch01\Objects\Mutexes
+\\eng-indch01\Objects\Sections
+\\eng-indch01\Paging File(*)\% Usage
+\\eng-indch01\Paging File(*)\% Usage Peak
+\\eng-indch01\System\File Read Operations/sec
+\\eng-indch01\System\File Write Operations/sec
+\\eng-indch01\System\File Control Operations/sec
+\\eng-indch01\System\File Read Bytes/sec
+\\eng-indch01\System\File Write Bytes/sec
+\\eng-indch01\System\File Control Bytes/sec
+\\eng-indch01\System\Context Switches/sec
+\\eng-indch01\System\System Calls/sec
+\\eng-indch01\System\File Data Operations/sec
+\\eng-indch01\System\System Up Time
+\\eng-indch01\System\Processor Queue Length
+\\eng-indch01\System\Processes
+\\eng-indch01\System\Threads
+\\eng-indch01\System\Alignment Fixups/sec
+\\eng-indch01\System\Exception Dispatches/sec
+\\eng-indch01\System\Floating Emulations/sec
+\\eng-indch01\System\% Registry Quota In Use
+\\eng-indch01\NUMA Node Memory(*)\Total MBytes
+\\eng-indch01\NUMA Node Memory(*)\Free & Zero Page List MBytes
+\\eng-indch01\NUMA Node Memory(*)\Standby List MBytes
+\\eng-indch01\NUMA Node Memory(*)\Available MBytes
+\\eng-indch01\Process(*)\% Processor Time
+\\eng-indch01\Process(*)\% User Time
+\\eng-indch01\Process(*)\% Privileged Time
+\\eng-indch01\Process(*)\Virtual Bytes Peak
+\\eng-indch01\Process(*)\Virtual Bytes
+\\eng-indch01\Process(*)\Page Faults/sec
+\\eng-indch01\Process(*)\Working Set Peak
+\\eng-indch01\Process(*)\Working Set
+\\eng-indch01\Process(*)\Page File Bytes Peak
+\\eng-indch01\Process(*)\Page File Bytes
+\\eng-indch01\Process(*)\Private Bytes
+\\eng-indch01\Process(*)\Thread Count
+\\eng-indch01\Process(*)\Priority Base
+\\eng-indch01\Process(*)\Elapsed Time
+\\eng-indch01\Process(*)\ID Process
+\\eng-indch01\Process(*)\Creating Process ID
+\\eng-indch01\Process(*)\Pool Paged Bytes
+\\eng-indch01\Process(*)\Pool Nonpaged Bytes
+\\eng-indch01\Process(*)\Handle Count
+\\eng-indch01\Process(*)\IO Read Operations/sec
+\\eng-indch01\Process(*)\IO Write Operations/sec
+\\eng-indch01\Process(*)\IO Data Operations/sec
+\\eng-indch01\Process(*)\IO Other Operations/sec
+\\eng-indch01\Process(*)\IO Read Bytes/sec
+\\eng-indch01\Process(*)\IO Write Bytes/sec
+\\eng-indch01\Process(*)\IO Data Bytes/sec
+\\eng-indch01\Process(*)\IO Other Bytes/sec
+\\eng-indch01\Process(*)\Working Set - Private
