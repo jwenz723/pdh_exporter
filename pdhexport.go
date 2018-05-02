@@ -153,15 +153,15 @@ func readCounterConfigFile(file string, countersChannel chan string) {
 // processCounters receives counters in countersChan and the processes them to be
 // collected and published. The done channel can be used to stop collection of
 // all initialized counters.
-func processCounters(setChan chan PdhCounterSet) {
-	for s := range setChan {
+func processCounters(cSetChan chan PdhCounterSet) {
+	for cSet := range cSetChan {
 		go func(cSet PdhCounterSet) {
 			fmt.Printf("Processing set for host: %s\n", cSet.Hostname)
 
-			var queryHandle win.PDH_HQUERY
-			counterHandles := map[string]*win.PDH_HCOUNTER{}
+			var qHandle win.PDH_HQUERY
+			cHandles := map[string]*win.PDH_HCOUNTER{}
 
-			ret := win.PdhOpenQuery(0, 0, &queryHandle)
+			ret := win.PdhOpenQuery(0, 0, &qHandle)
 			if ret != win.ERROR_SUCCESS {
 				fmt.Printf("failed PdhOpenQuery, %x\n", ret)
 			} else {
@@ -174,7 +174,7 @@ func processCounters(setChan chan PdhCounterSet) {
 						continue
 					}
 
-					ret = win.PdhAddEnglishCounter(queryHandle, counter, 0, &c)
+					ret = win.PdhAddEnglishCounter(qHandle, counter, 0, &c)
 					if ret != win.ERROR_SUCCESS {
 						if ret != win.PDH_CSTATUS_NO_OBJECT {
 							fmt.Printf("failed PdhAddEnglishCounter, %s, %x\n", counter, ret)
@@ -182,18 +182,18 @@ func processCounters(setChan chan PdhCounterSet) {
 						continue
 					}
 
-					counterHandles[counter] = &c
+					cHandles[counter] = &c
 				}
 
-				ret = win.PdhCollectQueryData(queryHandle)
+				ret = win.PdhCollectQueryData(qHandle)
 				if ret != win.ERROR_SUCCESS {
 					fmt.Printf("failed PdhCollectQueryData, %x\n", ret)
 				} else {
-					go func() {
+					go func(qHandle win.PDH_HQUERY, cHandles map[string]*win.PDH_HCOUNTER) {
 						for {
-							ret := win.PdhCollectQueryData(queryHandle)
+							ret := win.PdhCollectQueryData(qHandle)
 							if ret == win.ERROR_SUCCESS {
-								for k, v := range counterHandles {
+								for k, v := range cHandles {
 									var bufSize uint32
 									var bufCount uint32
 									var size = uint32(unsafe.Sizeof(win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE{}))
@@ -230,10 +230,10 @@ func processCounters(setChan chan PdhCounterSet) {
 							d := time.Duration(cSet.Interval) * time.Second
 							time.Sleep(d)
 						}
-					}()
+					}(qHandle, cHandles)
 				}
 			}
-		}(s)
+		}(cSet)
 	}
 }
 
