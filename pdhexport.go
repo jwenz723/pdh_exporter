@@ -1,22 +1,21 @@
 package main
 
 import (
-	"time"
-	"fmt"
-	"os"
-	"log"
-	//"github.com/lxn/win"
-	"strings"
 	"bufio"
 	"flag"
+	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+	"unsafe"
+
+	"github.com/lxn/win"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"sync"
-	//"unsafe"
-	"regexp"
-	"github.com/lxn/win"
-	"unsafe"
 )
 
 var (
@@ -32,7 +31,7 @@ func main() {
 	const COUNTERS_FILE= "config.yml"
 	countersFileChangedChan := make(chan struct{})
 	errorsChan := make(chan error)
-	done := make(chan struct{})
+	doneChan := make(chan struct{})
 
 	// Watch for the counters.txt file to change
 	go watchFile(COUNTERS_FILE, countersFileChangedChan, errorsChan)
@@ -44,15 +43,15 @@ func main() {
 				fmt.Printf("%s changed\n", COUNTERS_FILE)
 
 				// Tell all the collectors to stop collection and wait for them all to shutdown
-				close(done)
+				close(doneChan)
 				wg.Wait()
 
-				// reinitialize the done channel to allow collection to restart
-				done = make(chan struct{})
+				// reinitialize the doneChan channel to allow collection to restart
+				doneChan = make(chan struct{})
 
 				setChan := make(chan PdhCounterSet)
 				go ReadConfigFile(COUNTERS_FILE, setChan)
-				go processCounters(setChan)
+				go processCounters(setChan, doneChan)
 			case err := <-errorsChan:
 				fmt.Printf("error occurred while watching %s -> %s\n", COUNTERS_FILE, err)
 				return
@@ -105,7 +104,7 @@ func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
 
 			cSet := PdhCounterSet{
 				Hostname: hostName,
-				Interval: config.Pdh_Counters.Interval,
+				Interval: time.Duration(config.Pdh_Counters.Interval) * time.Second,
 			}
 
 			// Add into cSet each PdhCounter that has a key that matches the hostname
@@ -128,7 +127,7 @@ func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
 type PdhCounterSet struct {
 	Counters []PdhCounter
 	Hostname string
-	Interval int64
+	Interval time.Duration
 }
 
 func readCounterConfigFile(file string, countersChannel chan string) {
@@ -150,10 +149,10 @@ func readCounterConfigFile(file string, countersChannel chan string) {
 	fmt.Println("closed countersChannel")
 }
 
-// processCounters receives counters in countersChan and the processes them to be
-// collected and published. The done channel can be used to stop collection of
-// all initialized counters.
-func processCounters(cSetChan chan PdhCounterSet) {
+// processCounters receives PdhCounterSet objects and the processes them to be
+// collected and published. A single PDH Query will be created for each PdhCounterSet
+// The done channel can be used to stop collection of all initialized counters.
+func processCounters(cSetChan chan PdhCounterSet, doneChan chan struct{}) {
 	for cSet := range cSetChan {
 		go func(cSet PdhCounterSet) {
 			fmt.Printf("Processing set for host: %s\n", cSet.Hostname)
@@ -190,6 +189,8 @@ func processCounters(cSetChan chan PdhCounterSet) {
 					fmt.Printf("failed PdhCollectQueryData, %x\n", ret)
 				} else {
 					go func(qHandle win.PDH_HQUERY, cHandles map[string]*win.PDH_HCOUNTER) {
+						var promInstanceKeys []string
+
 						for {
 							ret := win.PdhCollectQueryData(qHandle)
 							if ret == win.ERROR_SUCCESS {
@@ -217,6 +218,7 @@ func processCounters(cSetChan chan PdhCounterSet) {
 													if g, err := counterToPrometheusGauge(k, s); err == nil {
 														promMetrics[k+s] = prometheus.NewGauge(g)
 														prometheus.MustRegister(promMetrics[k+s])
+														promInstanceKeys = append(promInstanceKeys, k+s)
 													} else {
 														fmt.Printf("failed counterToPrometheusGauge, %s, %s\n", k, err)
 													}
@@ -227,8 +229,17 @@ func processCounters(cSetChan chan PdhCounterSet) {
 								}
 							}
 
-							d := time.Duration(cSet.Interval) * time.Second
-							time.Sleep(d)
+							select{
+							case <- doneChan:
+								// TODO: figure out if this works to unregister collected counters
+								for _, v := range promInstanceKeys {
+									prometheus.Unregister(promMetrics[v])
+									fmt.Printf("unregistered %s\n", v)
+								}
+								return
+							case <- time.After(cSet.Interval):
+								// do nothing
+							}
 						}
 					}(qHandle, cHandles)
 				}
