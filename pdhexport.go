@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -28,19 +27,18 @@ var (
 func main() {
 	flag.Parse()
 
-	const COUNTERS_FILE= "config.yml"
 	countersFileChangedChan := make(chan struct{})
 	errorsChan := make(chan error)
 	doneChan := make(chan struct{})
 
 	// Watch for the counters.txt file to change
-	go watchFile(COUNTERS_FILE, countersFileChangedChan, errorsChan)
+	go watchFile(*config, countersFileChangedChan, errorsChan)
 
 	go func() {
 		for {
 			select {
 			case <-countersFileChangedChan:
-				fmt.Printf("%s changed\n", COUNTERS_FILE)
+				fmt.Printf("%s changed\n", *config)
 
 				// Tell all the collectors to stop collection and wait for them all to shutdown
 				close(doneChan)
@@ -50,10 +48,10 @@ func main() {
 				doneChan = make(chan struct{})
 
 				setChan := make(chan PdhCounterSet)
-				go ReadConfigFile(COUNTERS_FILE, setChan)
+				go ReadConfigFile(*config, setChan)
 				go processCounters(setChan, doneChan)
 			case err := <-errorsChan:
-				fmt.Printf("error occurred while watching %s -> %s\n", COUNTERS_FILE, err)
+				fmt.Printf("error occurred while watching %s -> %s\n", *config, err)
 				return
 			}
 
@@ -87,13 +85,14 @@ func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan e
 	}
 }
 
-func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
+// ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet to countersChannel
+func ReadConfigFile(file string, pcsChannel chan PdhCounterSet) {
 	processedHostNames := map[string]struct{}{}
 
 	config := NewConfig(file)
 	defer func() {
-		close(countersChannel)
-		fmt.Println("closed countersChannel")
+		close(pcsChannel)
+		fmt.Println("closed pcsChannel")
 	}()
 
 	for _, hostName := range config.Pdh_Counters.HostNames {
@@ -103,7 +102,7 @@ func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
 			processedHostNames[hostName] = struct{}{}
 
 			cSet := PdhCounterSet{
-				Hostname: hostName,
+				Host:     hostName,
 				Interval: time.Duration(config.Pdh_Counters.Interval) * time.Second,
 			}
 
@@ -117,36 +116,18 @@ func ReadConfigFile(file string, countersChannel chan PdhCounterSet) {
 			}
 
 			if len(cSet.Counters) > 0 {
-				countersChannel <- cSet
+				pcsChannel <- cSet
 				fmt.Printf("sent counter cSet for host: %s\n", hostName)
 			}
 		}
 	}
 }
 
+// PdhCounterSet defines a PdhCounter set to be collected on a single Host
 type PdhCounterSet struct {
 	Counters []PdhCounter
-	Hostname string
+	Host     string
 	Interval time.Duration
-}
-
-func readCounterConfigFile(file string, countersChannel chan string) {
-	f, err := os.Open(file)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-
-	for scanner.Scan() {
-		countersChannel <- scanner.Text()
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("error reading file (%s): %s\n", file, err)
-	}
-
-	close(countersChannel)
-	fmt.Println("closed countersChannel")
 }
 
 // processCounters receives PdhCounterSet objects and the processes them to be
@@ -155,7 +136,7 @@ func readCounterConfigFile(file string, countersChannel chan string) {
 func processCounters(cSetChan chan PdhCounterSet, doneChan chan struct{}) {
 	for cSet := range cSetChan {
 		go func(cSet PdhCounterSet) {
-			fmt.Printf("Processing set for host: %s\n", cSet.Hostname)
+			fmt.Printf("Processing set for host: %s\n", cSet.Host)
 
 			var qHandle win.PDH_HQUERY
 			cHandles := map[string]*win.PDH_HCOUNTER{}
@@ -165,7 +146,7 @@ func processCounters(cSetChan chan PdhCounterSet, doneChan chan struct{}) {
 				fmt.Printf("failed PdhOpenQuery, %x\n", ret)
 			} else {
 				for _, c := range cSet.Counters {
-					counter := fmt.Sprintf("\\\\%s%s", cSet.Hostname, c.Path)
+					counter := fmt.Sprintf("\\\\%s%s", cSet.Host, c.Path)
 					var c win.PDH_HCOUNTER
 					ret = win.PdhValidatePath(counter)
 					if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
