@@ -21,7 +21,7 @@ var (
 	wg = sync.WaitGroup{}
 
 	// A map containing a reference to all PdhCounterSet that are being collected
-	PCSCollectedSets = map[string]PdhCounterSet{}
+	PCSCollectedSets = map[string]*PdhCounterSet{}
 )
 
 func main() {
@@ -88,7 +88,7 @@ func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan e
 
 // ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet that are new to addPCSChan
 func ReadConfigFile(file string, addPCSChan chan PdhCounterSet) {
-	processedHostNames := map[string]struct{}{}
+	newPCSCollectedSets := map[string]*PdhCounterSet{}
 
 	config := NewConfig(file)
 	defer func() {
@@ -98,11 +98,8 @@ func ReadConfigFile(file string, addPCSChan chan PdhCounterSet) {
 
 	for _, hostName := range config.Pdh_Counters.HostNames {
 		// if the hostname has not already been processed
-		if _, ok := processedHostNames[hostName]; !ok {
-			// mark it as processed
-			processedHostNames[hostName] = struct{}{}
-
-			cSet := PdhCounterSet{
+		if _, ok := newPCSCollectedSets[hostName]; !ok {
+			newPCSCollectedSets[hostName] = &PdhCounterSet{
 				Done: make(chan struct{}),
 				Host:     hostName,
 				Interval: time.Duration(config.Pdh_Counters.Interval) * time.Second,
@@ -112,30 +109,44 @@ func ReadConfigFile(file string, addPCSChan chan PdhCounterSet) {
 			for k, v := range config.Pdh_Counters.Counters {
 				if matched, _ := regexp.MatchString(k, hostName); matched {
 					for _, counter := range v {
-						cSet.Counters = append(cSet.Counters, counter)
+						newPCSCollectedSets[hostName].Counters = append(newPCSCollectedSets[hostName].Counters, counter)
 					}
 				}
 			}
+		}
+	}
 
-			newSet := true
-			if v, ok := PCSCollectedSets[hostName]; ok {
-				if !v.TestEquivalence(&cSet) {
-					newSet = true
+	// Figure out if any PdhCounterSet have been removed completely from collection
+	for hostName, cSet := range PCSCollectedSets {
+		if _, ok := newPCSCollectedSets[hostName]; !ok {
+			// stop the old collection set
+			close(cSet.Done)
 
-					// stop the old collection set
-					close(v.Done)
+			// Wait until all Prometheus Collectors have been unregistered to prevent clashing with registration of the new Collectors
+			cSet.PromWaitGroup.Wait()
+		}
+	}
 
-					// Wait until all Prometheus Collectors have been unregistered to prevent clashing with registration of the new Collectors
-					v.PromWaitGroup.Wait()
-				} else {
-					newSet = false
-				}
+	// Figure out if any PdhCounterSet have been added or changed
+	for hostName, cSet := range newPCSCollectedSets {
+		newSet := true
+		if v, ok := PCSCollectedSets[hostName]; ok {
+			if !v.TestEquivalence(cSet) {
+				newSet = true
+
+				// stop the old collection set
+				close(v.Done)
+
+				// Wait until all Prometheus Collectors have been unregistered to prevent clashing with registration of the new Collectors
+				v.PromWaitGroup.Wait()
+			} else {
+				newSet = false
 			}
+		}
 
-			if len(cSet.Counters) > 0 && newSet {
-				addPCSChan <- cSet
-				fmt.Printf("%s: sent new PdhCounterSet\n", hostName)
-			}
+		if len(cSet.Counters) > 0 && newSet {
+			addPCSChan <- *cSet
+			fmt.Printf("%s: sent new PdhCounterSet\n", hostName)
 		}
 	}
 }
@@ -146,7 +157,7 @@ func ReadConfigFile(file string, addPCSChan chan PdhCounterSet) {
 func processCounters(addPCSChan chan PdhCounterSet, doneChan chan struct{}) {
 	for cSet := range addPCSChan {
 		go func(cSet PdhCounterSet) {
-			PCSCollectedSets[cSet.Host] = cSet
+			PCSCollectedSets[cSet.Host] = &cSet
 			cSet.Collect(doneChan)
 			delete(PCSCollectedSets, cSet.Host)
 			fmt.Printf("%s: finished Collect\n", cSet.Host)
