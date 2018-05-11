@@ -10,9 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
-	"github.com/lxn/win"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -21,37 +19,40 @@ var (
 	addr = flag.String("listen-address", ":8080", "The address to listen on for HTTP requests.")
 	config = flag.String("config", "config.yml", "Path to yml formatted config file.")
 	wg = sync.WaitGroup{}
-	promMetrics = map[string]prometheus.Gauge{}
+
+	// A map containing a reference to all PdhCounterSet that are being collected
+	PCSCollectedSets = map[string]PdhCounterSet{}
 )
 
 func main() {
 	flag.Parse()
 
-	countersFileChangedChan := make(chan struct{})
+	configChan := make(chan struct{})
 	errorsChan := make(chan error)
 	doneChan := make(chan struct{})
 
-	// Watch for the counters.txt file to change
-	go watchFile(*config, countersFileChangedChan, errorsChan)
+	go watchFile(*config, configChan, errorsChan)
 
 	go func() {
 		for {
 			select {
-			case <-countersFileChangedChan:
+			case <- configChan:
 				fmt.Printf("%s changed\n", *config)
 
 				// Tell all the collectors to stop collection and wait for them all to shutdown
-				close(doneChan)
-				wg.Wait()
+				//close(doneChan)
+				//wg.Wait()
 
 				// reinitialize the doneChan channel to allow collection to restart
-				doneChan = make(chan struct{})
+				//doneChan = make(chan struct{})
 
-				setChan := make(chan PdhCounterSet)
-				go ReadConfigFile(*config, setChan)
-				go processCounters(setChan, doneChan)
+				addPCSChan := make(chan PdhCounterSet)
+				go ReadConfigFile(*config, addPCSChan)
+				go processCounters(addPCSChan, doneChan)
 			case err := <-errorsChan:
 				fmt.Printf("error occurred while watching %s -> %s\n", *config, err)
+				close(doneChan)
+				wg.Wait()
 				return
 			}
 
@@ -85,14 +86,14 @@ func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan e
 	}
 }
 
-// ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet to countersChannel
-func ReadConfigFile(file string, pcsChannel chan PdhCounterSet) {
+// ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet that are new to addPCSChan
+func ReadConfigFile(file string, addPCSChan chan PdhCounterSet) {
 	processedHostNames := map[string]struct{}{}
 
 	config := NewConfig(file)
 	defer func() {
-		close(pcsChannel)
-		fmt.Println("closed pcsChannel")
+		close(addPCSChan)
+		fmt.Println("closed addPCSChan")
 	}()
 
 	for _, hostName := range config.Pdh_Counters.HostNames {
@@ -102,6 +103,7 @@ func ReadConfigFile(file string, pcsChannel chan PdhCounterSet) {
 			processedHostNames[hostName] = struct{}{}
 
 			cSet := PdhCounterSet{
+				Done: make(chan struct{}),
 				Host:     hostName,
 				Interval: time.Duration(config.Pdh_Counters.Interval) * time.Second,
 			}
@@ -115,116 +117,39 @@ func ReadConfigFile(file string, pcsChannel chan PdhCounterSet) {
 				}
 			}
 
-			if len(cSet.Counters) > 0 {
-				pcsChannel <- cSet
-				fmt.Printf("sent counter cSet for host: %s\n", hostName)
+			newSet := true
+			if v, ok := PCSCollectedSets[hostName]; ok {
+				if !v.TestEquivalence(&cSet) {
+					newSet = true
+
+					// stop the old collection set
+					close(v.Done)
+
+					// Wait until all Prometheus Collectors have been unregistered to prevent clashing with registration of the new Collectors
+					v.PromWaitGroup.Wait()
+				} else {
+					newSet = false
+				}
+			}
+
+			if len(cSet.Counters) > 0 && newSet {
+				addPCSChan <- cSet
+				fmt.Printf("%s: sent new PdhCounterSet\n", hostName)
 			}
 		}
 	}
 }
 
-// PdhCounterSet defines a PdhCounter set to be collected on a single Host
-type PdhCounterSet struct {
-	Counters []PdhCounter
-	Host     string
-	Interval time.Duration
-}
-
 // processCounters receives PdhCounterSet objects and the processes them to be
 // collected and published. A single PDH Query will be created for each PdhCounterSet
 // The done channel can be used to stop collection of all initialized counters.
-func processCounters(cSetChan chan PdhCounterSet, doneChan chan struct{}) {
-	for cSet := range cSetChan {
+func processCounters(addPCSChan chan PdhCounterSet, doneChan chan struct{}) {
+	for cSet := range addPCSChan {
 		go func(cSet PdhCounterSet) {
-			fmt.Printf("Processing set for host: %s\n", cSet.Host)
-
-			var qHandle win.PDH_HQUERY
-			cHandles := map[string]*win.PDH_HCOUNTER{}
-
-			ret := win.PdhOpenQuery(0, 0, &qHandle)
-			if ret != win.ERROR_SUCCESS {
-				fmt.Printf("failed PdhOpenQuery, %x\n", ret)
-			} else {
-				for _, c := range cSet.Counters {
-					counter := fmt.Sprintf("\\\\%s%s", cSet.Host, c.Path)
-					var c win.PDH_HCOUNTER
-					ret = win.PdhValidatePath(counter)
-					if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
-						fmt.Printf("failed PdhValidatePath, %s, %x\n", counter, ret)
-						continue
-					}
-
-					ret = win.PdhAddEnglishCounter(qHandle, counter, 0, &c)
-					if ret != win.ERROR_SUCCESS {
-						if ret != win.PDH_CSTATUS_NO_OBJECT {
-							fmt.Printf("failed PdhAddEnglishCounter, %s, %x\n", counter, ret)
-						}
-						continue
-					}
-
-					cHandles[counter] = &c
-				}
-
-				ret = win.PdhCollectQueryData(qHandle)
-				if ret != win.ERROR_SUCCESS {
-					fmt.Printf("failed PdhCollectQueryData, %x\n", ret)
-				} else {
-					go func(qHandle win.PDH_HQUERY, cHandles map[string]*win.PDH_HCOUNTER) {
-						var promInstanceKeys []string
-
-						for {
-							ret := win.PdhCollectQueryData(qHandle)
-							if ret == win.ERROR_SUCCESS {
-								for k, v := range cHandles {
-									var bufSize uint32
-									var bufCount uint32
-									var size = uint32(unsafe.Sizeof(win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE{}))
-									var emptyBuf [1]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE // need at least 1 addressable null ptr.
-
-									ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &emptyBuf[0])
-									if ret == win.PDH_MORE_DATA {
-										filledBuf := make([]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE, bufCount*size)
-										ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &filledBuf[0])
-										if ret == win.ERROR_SUCCESS {
-											for i := 0; i < int(bufCount); i++ {
-												c := filledBuf[i]
-												s := win.UTF16PtrToString(c.SzName)
-
-												if val, ok := promMetrics[k+s]; ok {
-													val.Set(c.FmtValue.DoubleValue)
-
-													// uncomment this line to have new values printed to console
-													//fmt.Printf("%s[%s] : %v\n", p.Counter, s, c.FmtValue.DoubleValue)
-												} else {
-													if g, err := counterToPrometheusGauge(k, s); err == nil {
-														promMetrics[k+s] = prometheus.NewGauge(g)
-														prometheus.MustRegister(promMetrics[k+s])
-														promInstanceKeys = append(promInstanceKeys, k+s)
-													} else {
-														fmt.Printf("failed counterToPrometheusGauge, %s, %s\n", k, err)
-													}
-												}
-											}
-										}
-									}
-								}
-							}
-
-							select{
-							case <- doneChan:
-								// TODO: figure out if this works to unregister collected counters
-								for _, v := range promInstanceKeys {
-									prometheus.Unregister(promMetrics[v])
-									fmt.Printf("unregistered %s\n", v)
-								}
-								return
-							case <- time.After(cSet.Interval):
-								// do nothing
-							}
-						}
-					}(qHandle, cHandles)
-				}
-			}
+			PCSCollectedSets[cSet.Host] = cSet
+			cSet.Collect(doneChan)
+			delete(PCSCollectedSets, cSet.Host)
+			fmt.Printf("%s: finished Collect\n", cSet.Host)
 		}(cSet)
 	}
 }
@@ -281,8 +206,11 @@ func counterToPrometheusGauge(counter, instance string) (prometheus.GaugeOpts, e
 		return prometheus.GaugeOpts{}, err
 	}
 
+	category = string(reg.ReplaceAll([]byte(category),[]byte("")))
+	instance = string(reg.ReplaceAll([]byte(instance),[]byte("")))
+
 	return prometheus.GaugeOpts{
-		ConstLabels: prometheus.Labels{"hostname": hostname, "pdhcategory": string(reg.ReplaceAll([]byte(category),[]byte(""))), "pdhinstance": string(reg.ReplaceAll([]byte(instance),[]byte("")))},
+		ConstLabels: prometheus.Labels{"hostname": hostname, "pdhcategory": category, "pdhinstance": instance},
 		Help: "windows performance counter",
 		Name: string(reg.ReplaceAll([]byte(counterName),[]byte(""))),
 		Namespace:"winpdh",
