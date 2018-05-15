@@ -8,6 +8,7 @@ import (
 
 	"github.com/lxn/win"
 	"github.com/prometheus/client_golang/prometheus"
+	log "github.com/sirupsen/logrus"
 )
 
 type PdhCounter struct {
@@ -36,6 +37,7 @@ func (p *PdhCounter) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // PdhCounterSet defines a PdhCounter set to be collected on a single Host
 type PdhCounterSet struct {
+	completedInitialization bool
 	Counters []PdhCounter
 	Done 	 chan struct{} // When this channel is closed, the collected Counters are unregistered from Prometheus and collection is stopped
 	Host     string
@@ -46,28 +48,46 @@ type PdhCounterSet struct {
 	PromWaitGroup sync.WaitGroup
 }
 
-func (p *PdhCounterSet) Collect(doneChan chan struct{}) {
-	fmt.Printf("%s: start Collect\n", p.Host)
+// Collect will start the collection for the defined Host and Counters in p
+func (p *PdhCounterSet) Collect() {
+	log.WithFields(log.Fields{
+		"host": p.Host,
+	}).Info("%s: start Collect()")
+	//fmt.Printf("%s: start Collect()\n", p.Host)
 
 	p.PdhCHandles = map[string]*win.PDH_HCOUNTER{}
 
 	ret := win.PdhOpenQuery(0, 0, &p.PdhQHandle)
 	if ret != win.ERROR_SUCCESS {
-		fmt.Printf("%s: failed PdhOpenQuery, %x\n", p.Host, ret)
+		log.WithFields(log.Fields{
+			"host": p.Host,
+			"PDHError": fmt.Sprintf("%x",ret),
+		}).Error("failed PdhOpenQuery")
+		//fmt.Printf("%s: failed PdhOpenQuery() -> %x\n", p.Host, ret)
 	} else {
 		for _, c := range p.Counters {
 			counter := fmt.Sprintf("\\\\%s%s", p.Host, c.Path)
 			var c win.PDH_HCOUNTER
 			ret = win.PdhValidatePath(counter)
 			if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
-				fmt.Printf("%s: failed PdhValidatePath, %s, %x\n", p.Host, counter, ret)
+				log.WithFields(log.Fields{
+					"host": p.Host,
+					"counter": counter,
+					"PDHError": fmt.Sprintf("%x",ret),
+				}).Error("failed PdhValidatePath")
+				//fmt.Printf("%s: failed PdhValidatePath() for %s -> %x\n", p.Host, counter, ret)
 				continue
 			}
 
 			ret = win.PdhAddEnglishCounter(p.PdhQHandle, counter, 0, &c)
 			if ret != win.ERROR_SUCCESS {
 				if ret != win.PDH_CSTATUS_NO_OBJECT {
-					fmt.Printf("%s: failed PdhAddEnglishCounter, %s, %x\n", p.Host, counter, ret)
+					log.WithFields(log.Fields{
+						"counter": counter,
+						"host": p.Host,
+						"PDHError": fmt.Sprintf("%x",ret),
+					}).Error("failed PdhAddEnglishCounter")
+					//fmt.Printf("%s: failed PdhAddEnglishCounter() for %s -> %x", p.Host, counter, ret)
 				}
 				continue
 			}
@@ -77,7 +97,11 @@ func (p *PdhCounterSet) Collect(doneChan chan struct{}) {
 
 		ret = win.PdhCollectQueryData(p.PdhQHandle)
 		if ret != win.ERROR_SUCCESS {
-			fmt.Printf("%s: failed PdhCollectQueryData, %x\n", p.Host, ret)
+			log.WithFields(log.Fields{
+				"host": p.Host,
+				"PDHError": fmt.Sprintf("%x",fmt.Sprintf("%x",ret)),
+			}).Error("failed PdhCollectQueryData")
+			//fmt.Printf("%s: failed PdhCollectQueryData() -> %x\n", p.Host, ret)
 		} else {
 			p.PromCollectors = map[string]prometheus.Gauge{}
 			p.PromWaitGroup = sync.WaitGroup{}
@@ -101,22 +125,47 @@ func (p *PdhCounterSet) Collect(doneChan chan struct{}) {
 									s := win.UTF16PtrToString(c.SzName)
 
 									if val, ok := p.PromCollectors[k+s]; ok {
+										// TODO: implement counter multiplier
 										val.Set(c.FmtValue.DoubleValue)
-
-										// uncomment this line to have new values printed to console
-										//fmt.Printf("%s[%s] : %v\n", p.Counter, s, c.FmtValue.DoubleValue)
 									} else {
 										if g, err := counterToPrometheusGauge(k, s); err == nil {
 											p.PromCollectors[k+s] = prometheus.NewGauge(g)
+
 											if err = prometheus.Register(p.PromCollectors[k+s]); err != nil {
-												fmt.Printf("%s: failed to register with prometheus: %s - %s\n", p.Host, k, s)
-												delete(p.PromCollectors, k+s)
-												close(p.Done)
-												return
+												if e, ok := err.(prometheus.AlreadyRegisteredError); ok {
+													log.WithFields(log.Fields{
+														"counter": k,
+														"PDHInstance": s,
+														"host": p.Host,
+														"error": e,
+													}).Warnf("Collector already registered with prometheus")
+													//fmt.Printf("%s: Collector already registered -> %v\n", p.Host, e)
+												} else {
+													log.WithFields(log.Fields{
+														"counter": k,
+														"PDHInstance": s,
+														"host": p.Host,
+														"error": err,
+													}).Error("failed to register with prometheus")
+													//fmt.Printf("%s: failed to register with prometheus -> %v\n", p.Host, err)
+													close(p.Done)
+													goto teardown
+												}
+											} else {
+												p.PromWaitGroup.Add(1)
+												log.WithFields(log.Fields{
+													"counter": k,
+													"PDHInstance": s,
+													"host": p.Host,
+												}).Info("Collector registered with prometheus")
 											}
-											p.PromWaitGroup.Add(1)
 										} else {
-											fmt.Printf("%s: failed counterToPrometheusGauge, %s, %s\n", p.Host, k, err)
+											log.WithFields(log.Fields{
+												"counter": k,
+												"host": p.Host,
+												"error": err,
+											}).Error("failed counterToPrometheusGauge")
+											//fmt.Printf("%s: failed counterToPrometheusGauge -> %v\n", p.Host, err)
 										}
 									}
 								}
@@ -125,13 +174,26 @@ func (p *PdhCounterSet) Collect(doneChan chan struct{}) {
 					}
 				}
 
+				if !p.completedInitialization {
+					p.completedInitialization = true
+					log.WithFields(log.Fields{
+						"host": p.Host,
+					}).Info("completed Collect() initialization")
+					//fmt.Printf("%s: completed Collect() initialization\n", p.Host)
+				} else {
+					log.WithFields(log.Fields{
+						"host": p.Host,
+					}).Debug("completed Collect() iteration")
+					//fmt.Printf("%s: completed Collect() iteration\n", p.Host)
+				}
+
+				teardown:
 				select{
-				case <- doneChan:
-					fmt.Printf("%s: received global done\n", p.Host)
-					p.UnregisterPrometheusCollectors()
-					return
 				case <- p.Done:
-					fmt.Printf("%s: received instance done\n", p.Host)
+					log.WithFields(log.Fields{
+						"host": p.Host,
+					}).Info("received instance done")
+					//fmt.Printf("%s: received instance done\n", p.Host)
 					p.UnregisterPrometheusCollectors()
 					return
 				case <- time.After(p.Interval):
@@ -146,11 +208,19 @@ func (p *PdhCounterSet) Collect(doneChan chan struct{}) {
 func (p *PdhCounterSet) UnregisterPrometheusCollectors() {
 	for k, v := range p.PromCollectors {
 		if b := prometheus.Unregister(v); !b {
-			fmt.Printf("%s: failed to unregister %s\n", p.Host, k)
+			log.WithFields(log.Fields{
+				"collector": k,
+				"host": p.Host,
+			}).Error("failed to unregister Prometheus Collector\n")
+			//fmt.Printf("%s: failed to unregister Prometheus Collector for %s\n", p.Host, k)
 		} else {
 			delete(p.PromCollectors, k)
 			p.PromWaitGroup.Done()
-			fmt.Printf("%s: unregistered %s\n", p.Host, k)
+			log.WithFields(log.Fields{
+				"collector": k,
+				"host": p.Host,
+			}).Debug("unregistered Prometheus Collector")
+			//fmt.Printf("%s: unregistered Prometheus Collector for %s\n", p.Host, k)
 		}
 	}
 }
