@@ -2,12 +2,14 @@ pdh_counters:
     metricprefix: 'myprefix'
     interval: 5
     counters:
-        eng-.*:
+        .*:
             - path: '\Processor(*)\% Processor Time'
-        .*bmc.*:
+        .*host.*:
             - path: '\Processor(*)\% User Time'
     # The names of the hosts to collect counters from. This list should not contain duplicates.
     # If duplicates exist, only the first instance of the duplicated item will be processed.
+    # Note that localhost will be replaced with the actual hostname of the machine executing
+    # the pdhexport application.
     hostnames:
-        - 'host1'
+        - 'localhost'
         - 'host2'

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -48,12 +51,39 @@ type PdhCounterSet struct {
 	PromWaitGroup sync.WaitGroup
 }
 
-// Collect will start the collection for the defined Host and Counters in p
-func (p *PdhCounterSet) Collect() {
+// StopCollect shuts down the collection that was started by StartCollect()
+// and waits for all prometheus collectors to be unregistered.
+func (p *PdhCounterSet) StopCollect() {
+	// stop the old collection set
+	close(p.Done)
+
+	// Wait until all Prometheus Collectors have been unregistered to prevent clashing with registration of the new Collectors
+	p.PromWaitGroup.Wait()
+}
+
+// StartCollect will start the collection for the defined Host and Counters in p
+func (p *PdhCounterSet) StartCollect() {
 	log.WithFields(log.Fields{
 		"host": p.Host,
-	}).Info("%s: start Collect()")
-	//fmt.Printf("%s: start Collect()\n", p.Host)
+	}).Info("start StartCollect()")
+
+	// Initialize basics of prometheus
+	p.PromCollectors = map[string]prometheus.Gauge{}
+	p.PromWaitGroup = sync.WaitGroup{}
+
+	// Add a collector to track how many pdh counters fail to collect
+	g := prometheus.GaugeOpts{
+		ConstLabels:prometheus.Labels{"hostname":p.Host},
+		Help: "The number of counters that failed to initialize",
+		Name: "failed_collectors",
+		Namespace:"winpdh",
+	}
+	if err := p.AddPrometheusCollector("FailedCollectors", g); err != nil {
+		log.WithFields(log.Fields{
+			"host": p.Host,
+		}).Errorf("failed to add 'FailedCollectors' prometheus collector -> %s", err)
+		return
+	}
 
 	p.PdhCHandles = map[string]*win.PDH_HCOUNTER{}
 
@@ -63,7 +93,6 @@ func (p *PdhCounterSet) Collect() {
 			"host": p.Host,
 			"PDHError": fmt.Sprintf("%x",ret),
 		}).Error("failed PdhOpenQuery")
-		//fmt.Printf("%s: failed PdhOpenQuery() -> %x\n", p.Host, ret)
 	} else {
 		for _, c := range p.Counters {
 			counter := fmt.Sprintf("\\\\%s%s", p.Host, c.Path)
@@ -75,7 +104,7 @@ func (p *PdhCounterSet) Collect() {
 					"counter": counter,
 					"PDHError": fmt.Sprintf("%x",ret),
 				}).Error("failed PdhValidatePath")
-				//fmt.Printf("%s: failed PdhValidatePath() for %s -> %x\n", p.Host, counter, ret)
+				p.PromCollectors["FailedCollectors"].Add(1)
 				continue
 			}
 
@@ -87,8 +116,8 @@ func (p *PdhCounterSet) Collect() {
 						"host": p.Host,
 						"PDHError": fmt.Sprintf("%x",ret),
 					}).Error("failed PdhAddEnglishCounter")
-					//fmt.Printf("%s: failed PdhAddEnglishCounter() for %s -> %x", p.Host, counter, ret)
 				}
+				p.PromCollectors["FailedCollectors"].Add(1)
 				continue
 			}
 
@@ -101,11 +130,7 @@ func (p *PdhCounterSet) Collect() {
 				"host": p.Host,
 				"PDHError": fmt.Sprintf("%x",fmt.Sprintf("%x",ret)),
 			}).Error("failed PdhCollectQueryData")
-			//fmt.Printf("%s: failed PdhCollectQueryData() -> %x\n", p.Host, ret)
 		} else {
-			p.PromCollectors = map[string]prometheus.Gauge{}
-			p.PromWaitGroup = sync.WaitGroup{}
-
 			for {
 				ret := win.PdhCollectQueryData(p.PdhQHandle)
 				if ret == win.ERROR_SUCCESS {
@@ -129,9 +154,7 @@ func (p *PdhCounterSet) Collect() {
 										val.Set(c.FmtValue.DoubleValue)
 									} else {
 										if g, err := counterToPrometheusGauge(k, s); err == nil {
-											p.PromCollectors[k+s] = prometheus.NewGauge(g)
-
-											if err = prometheus.Register(p.PromCollectors[k+s]); err != nil {
+											if err := p.AddPrometheusCollector(k+s, g); err != nil {
 												if e, ok := err.(prometheus.AlreadyRegisteredError); ok {
 													log.WithFields(log.Fields{
 														"counter": k,
@@ -139,7 +162,6 @@ func (p *PdhCounterSet) Collect() {
 														"host": p.Host,
 														"error": e,
 													}).Warnf("Collector already registered with prometheus")
-													//fmt.Printf("%s: Collector already registered -> %v\n", p.Host, e)
 												} else {
 													log.WithFields(log.Fields{
 														"counter": k,
@@ -147,7 +169,6 @@ func (p *PdhCounterSet) Collect() {
 														"host": p.Host,
 														"error": err,
 													}).Error("failed to register with prometheus")
-													//fmt.Printf("%s: failed to register with prometheus -> %v\n", p.Host, err)
 													close(p.Done)
 													goto teardown
 												}
@@ -157,7 +178,7 @@ func (p *PdhCounterSet) Collect() {
 													"counter": k,
 													"PDHInstance": s,
 													"host": p.Host,
-												}).Info("Collector registered with prometheus")
+												}).Debug("Collector registered with prometheus")
 											}
 										} else {
 											log.WithFields(log.Fields{
@@ -165,7 +186,6 @@ func (p *PdhCounterSet) Collect() {
 												"host": p.Host,
 												"error": err,
 											}).Error("failed counterToPrometheusGauge")
-											//fmt.Printf("%s: failed counterToPrometheusGauge -> %v\n", p.Host, err)
 										}
 									}
 								}
@@ -178,13 +198,11 @@ func (p *PdhCounterSet) Collect() {
 					p.completedInitialization = true
 					log.WithFields(log.Fields{
 						"host": p.Host,
-					}).Info("completed Collect() initialization")
-					//fmt.Printf("%s: completed Collect() initialization\n", p.Host)
+					}).Info("completed StartCollect() initialization")
 				} else {
 					log.WithFields(log.Fields{
 						"host": p.Host,
-					}).Debug("completed Collect() iteration")
-					//fmt.Printf("%s: completed Collect() iteration\n", p.Host)
+					}).Debug("completed StartCollect() iteration")
 				}
 
 				teardown:
@@ -193,7 +211,6 @@ func (p *PdhCounterSet) Collect() {
 					log.WithFields(log.Fields{
 						"host": p.Host,
 					}).Info("received instance done")
-					//fmt.Printf("%s: received instance done\n", p.Host)
 					p.UnregisterPrometheusCollectors()
 					return
 				case <- time.After(p.Interval):
@@ -201,6 +218,17 @@ func (p *PdhCounterSet) Collect() {
 				}
 			}
 		}
+	}
+}
+
+// AddPrometheusCollector adds a new gauge into PromCollectors and updates the number in PromWaitGroup
+func (p *PdhCounterSet) AddPrometheusCollector(key string, g prometheus.GaugeOpts) error {
+	p.PromCollectors[key] = prometheus.NewGauge(g)
+	if err := prometheus.Register(p.PromCollectors[key]); err != nil {
+		return err
+	} else {
+		p.PromWaitGroup.Add(1)
+		return nil
 	}
 }
 
@@ -212,7 +240,6 @@ func (p *PdhCounterSet) UnregisterPrometheusCollectors() {
 				"collector": k,
 				"host": p.Host,
 			}).Error("failed to unregister Prometheus Collector\n")
-			//fmt.Printf("%s: failed to unregister Prometheus Collector for %s\n", p.Host, k)
 		} else {
 			delete(p.PromCollectors, k)
 			p.PromWaitGroup.Done()
@@ -220,7 +247,6 @@ func (p *PdhCounterSet) UnregisterPrometheusCollectors() {
 				"collector": k,
 				"host": p.Host,
 			}).Debug("unregistered Prometheus Collector")
-			//fmt.Printf("%s: unregistered Prometheus Collector for %s\n", p.Host, k)
 		}
 	}
 }
@@ -238,4 +264,73 @@ func (p *PdhCounterSet) TestEquivalence(a *PdhCounterSet) bool {
 	}
 
 	return true
+}
+
+// counterToPrometheusGauge converts a windows performance counter string into
+// a prometheus Gauge.
+//
+// According to https://prometheus.io/docs/concepts/data_model/
+// 		- Prometheus Metric Names must match: [a-zA-Z_:][a-zA-Z0-9_:]*
+//		- Prometheus Label Restrictions:
+// 			- Label names must match: [a-zA-Z_][a-zA-Z0-9_]*
+//			- Label values: may contain any Unicode characters
+//
+// Additional Prometheus Metric/Label naming conventions: https://prometheus.io/docs/practices/naming/
+func counterToPrometheusGauge(counter, instance string) (prometheus.GaugeOpts, error) {
+	fields := strings.Split(counter, "\\")
+	var hostname string
+	var catIndex int
+	var valIndex int
+	var category string
+
+	// If the string contains a hostname
+	if len(fields) == 5 {
+		hostname = fields[2]
+		catIndex = 3
+		valIndex = 4
+	} else if len(fields) == 3 {
+		hostname = "localhost"
+		catIndex = 1
+		valIndex = 2
+	} else {
+		return prometheus.GaugeOpts{}, errors.New("Unknown number of fields in counter: " + counter)
+	}
+
+	if strings.Contains(fields[catIndex], "(") {
+		catFields := strings.Split(fields[catIndex], "(")
+		category = catFields[0]
+		i := strings.TrimSuffix(catFields[1], ")")
+		if i != "*" {
+			instance = i
+		}
+	} else {
+		category = fields[catIndex]
+	}
+
+	// Replace known runes that occur in winpdh
+	r := strings.NewReplacer(
+		".", "_",
+		"-", "_",
+		" ", "_",
+		"/","_",
+		"%", "percent",
+	)
+	counterName := r.Replace(fields[valIndex])
+	instance = r.Replace(instance)
+
+	// Use this regex to replace any invalid characters that weren't accounted for already
+	reg, err := regexp.Compile("[^a-zA-Z0-9_:]")
+	if err != nil {
+		return prometheus.GaugeOpts{}, err
+	}
+
+	category = string(reg.ReplaceAll([]byte(category),[]byte("")))
+	instance = string(reg.ReplaceAll([]byte(instance),[]byte("")))
+
+	return prometheus.GaugeOpts{
+		ConstLabels: prometheus.Labels{"hostname": hostname, "pdhcategory": category, "pdhinstance": instance},
+		Help: "windows performance counter",
+		Name: string(reg.ReplaceAll([]byte(counterName),[]byte(""))),
+		Namespace:"winpdh",
+	}, nil
 }

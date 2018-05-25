@@ -15,6 +15,18 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/kardianos/osext"
+  packages = ["."]
+  revision = "ae77be60afb1dcacde03767a8c37337fad28ac14"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/kardianos/service"
+  packages = ["."]
+  revision = "615a14ed75099c9eaac6949e22ac2341bf9d3197"
+
+[[projects]]
+  branch = "master"
   name = "github.com/lxn/win"
   packages = ["."]
   revision = "7e1250ba2e7749fb9eb865da9ee93fb5a2fe73f1"
@@ -24,12 +36,6 @@
   packages = ["pbutil"]
   revision = "3247c84500bff8d9fb6d579d800f20b3e091582c"
   version = "v1.0.0"
-
-[[projects]]
-  name = "github.com/pkg/errors"
-  packages = ["."]
-  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
-  version = "v0.8.0"
 
 [[projects]]
   name = "github.com/prometheus/client_golang"
@@ -84,7 +90,11 @@
   name = "golang.org/x/sys"
   packages = [
     "unix",
-    "windows"
+    "windows",
+    "windows/registry",
+    "windows/svc",
+    "windows/svc/eventlog",
+    "windows/svc/mgr"
   ]
   revision = "7c87d13f8e835d2fb3a70a2912c811ed0c1d241b"
 
@@ -97,6 +107,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "21011a24b818c30f52b28b60c96473ad993d936c51b8f9f945784ace5d4a50e9"
+  inputs-digest = "367f1daa9b6baac30601c5ac16959377a1e8cdb981db3b728cedee871469e717"
   solver-name = "gps-cdcl"
   solver-version = 1
