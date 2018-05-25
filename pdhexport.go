@@ -44,18 +44,18 @@ type program struct {
 	exit chan struct{}
 }
 
+// Start is called when the service is started
 func (p *program) Start(s service.Service) error {
-	if service.Interactive() {
-		logger.Info("Running in terminal.")
+	logger.Info("Starting...")
 
+	// If running under terminal
+	if service.Interactive() {
 		r, err := os.Getwd()
 		if err != nil {
 			log.Fatal(err)
 		}
 		runningDir = r
-	} else {
-		logger.Info("Running under service manager.")
-
+	} else { // else running under service manager
 		r, err := filepath.Abs(filepath.Dir(os.Args[0]))
 		if err != nil {
 			log.Fatal(err)
@@ -74,8 +74,16 @@ func (p *program) Start(s service.Service) error {
 	return nil
 }
 
+// Stop is called when the service is stopped
+func (p *program) Stop(s service.Service) error {
+	// Any work in Stop should be quick, usually a few seconds at most.
+	logger.Info("Shutting down...")
+	close(p.exit)
+	return nil
+}
+
+// Contains all code for starting the application
 func (p *program) run() error {
-	logger.Info("starting")
 	// Setup log path to log messages out to
 	l, err := InitLogging(*logDirectory, *logLevel, *JSONOutput)
 	if err != nil {
@@ -88,17 +96,12 @@ func (p *program) run() error {
 		}()
 	}
 
-	logger.Info("finished InitLogging")
-
 	configChan := make(chan struct{})
 	errorsChan := make(chan error)
-
-	logger.Info("running in: " + runningDir)
 
 	if *config == "config.yml" {
 		*config = filepath.Join(runningDir, *config)
 	}
-	logger.Info("going to start watchFile: " + *config)
 	go watchFile(*config, configChan, errorsChan)
 
 	go func() {
@@ -106,10 +109,8 @@ func (p *program) run() error {
 			select {
 			case <- configChan:
 				log.Infof("%s changed\n", *config)
-				logger.Info("file changed")
 				go ReadConfigFile(*config)
 			case err := <-errorsChan:
-				logger.Errorf("error occurred while watching %s -> %s\n", *config, err)
 				log.Fatalf("error occurred while watching %s -> %s\n", *config, err)
 			}
 
@@ -121,13 +122,6 @@ func (p *program) run() error {
 	http.Handle("/metrics", promhttp.Handler())
 	log.Fatal(http.ListenAndServe(*addr, nil))
 
-	return nil
-}
-
-func (p *program) Stop(s service.Service) error {
-	// Any work in Stop should be quick, usually a few seconds at most.
-	logger.Info("Shutting down...")
-	close(p.exit)
 	return nil
 }
 
