@@ -84,6 +84,10 @@ func (p *program) Stop(s service.Service) error {
 
 // Contains all code for starting the application
 func (p *program) run() error {
+	if *logDirectory == "logs" {
+		*logDirectory = filepath.Join(runningDir, *logDirectory)
+	}
+
 	// Setup log path to log messages out to
 	l, err := InitLogging(*logDirectory, *logLevel, *JSONOutput)
 	if err != nil {
