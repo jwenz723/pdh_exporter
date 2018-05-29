@@ -248,7 +248,7 @@ func ReadConfigFile(file string) {
 	for _, hostName := range config.Pdh_Counters.HostNames {
 		if hostName == "localhost" {
 			if h, err := os.Hostname(); err == nil {
-				hostName = h
+				hostName = strings.ToUpper(h)
 			}
 
 		}
