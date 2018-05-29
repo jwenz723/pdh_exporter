@@ -23,7 +23,7 @@ var (
 	logDirectory = flag.String("logDirectory", "logs", "Specify a directory where logs should be written to. Use \"\" to log to stdout.")
 	logLevel = flag.String("logLevel", "info", "Use this flag to specify what level of logging you wish to have output. Available values: panic, fatal, error, warn, info, debug.")
 	JSONOutput = flag.Bool("JSONOutput", false, "Use this flag to turn on json formatted logging.")
-	svcFlag = flag.String("service", "", "Control the system service.")
+	svcFlag = flag.String("service", "", "Control the system service. Valid actions: start, stop, restart, install, uninstall")
 
 	// A map containing a reference to all PdhCounterSet that are being collected
 	PCSCollectedSets = map[string]*PdhCounterSet{}
