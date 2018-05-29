@@ -84,13 +84,13 @@ func (p *program) Stop(s service.Service) error {
 
 // Contains all code for starting the application
 func (p *program) run() error {
+	// TODO: find a better way to handle a consistent logs directory across different start methods (service or terminal)
 	if *logDirectory == "logs" {
 		*logDirectory = filepath.Join(runningDir, *logDirectory)
 	}
 
 	// Setup log path to log messages out to
-	l, err := InitLogging(*logDirectory, *logLevel, *JSONOutput)
-	if err != nil {
+	if l, err := InitLogging(*logDirectory, *logLevel, *JSONOutput); err != nil {
 		log.Fatalf("error initializing log file -> %v\n", err)
 	} else {
 		defer func() {
@@ -103,6 +103,7 @@ func (p *program) run() error {
 	configChan := make(chan struct{})
 	errorsChan := make(chan error)
 
+	// TODO: find a better way to handle a consistent config path across different start methods (service or terminal)
 	if *config == "config.yml" {
 		*config = filepath.Join(runningDir, *config)
 	}
@@ -303,7 +304,11 @@ func ReadConfigFile(file string) {
 				PCSCollectedSets[cSet.Host] = &cSet
 				PCSCollectedSetsMux.Unlock()
 
-				cSet.StartCollect()
+				if err := cSet.StartCollect(); err != nil {
+					log.WithFields(log.Fields{
+						"host": cSet.Host,
+					}).Errorf("Error experienced in StartCollect -> %s", err)
+				}
 
 				PCSCollectedSetsMux.Lock()
 				delete(PCSCollectedSets, cSet.Host)

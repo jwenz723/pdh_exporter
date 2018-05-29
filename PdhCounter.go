@@ -62,7 +62,9 @@ func (p *PdhCounterSet) StopCollect() {
 }
 
 // StartCollect will start the collection for the defined Host and Counters in p
-func (p *PdhCounterSet) StartCollect() {
+func (p *PdhCounterSet) StartCollect() error {
+	defer p.UnregisterPrometheusCollectors()
+
 	log.WithFields(log.Fields{
 		"host": p.Host,
 	}).Info("start StartCollect()")
@@ -82,7 +84,7 @@ func (p *PdhCounterSet) StartCollect() {
 		log.WithFields(log.Fields{
 			"host": p.Host,
 		}).Errorf("failed to add 'FailedCollectors' prometheus collector -> %s", err)
-		return
+		return err
 	}
 
 	p.PdhCHandles = map[string]*win.PDH_HCOUNTER{}
@@ -131,6 +133,7 @@ func (p *PdhCounterSet) StartCollect() {
 				"PDHError": fmt.Sprintf("%x",fmt.Sprintf("%x",ret)),
 			}).Error("failed PdhCollectQueryData")
 		} else {
+			loop:
 			for {
 				ret := win.PdhCollectQueryData(p.PdhQHandle)
 				if ret == win.ERROR_SUCCESS {
@@ -170,10 +173,9 @@ func (p *PdhCounterSet) StartCollect() {
 														"error": err,
 													}).Error("failed to register with prometheus")
 													close(p.Done)
-													goto teardown
+													return err
 												}
 											} else {
-												p.PromWaitGroup.Add(1)
 												log.WithFields(log.Fields{
 													"counter": k,
 													"PDHInstance": s,
@@ -205,20 +207,20 @@ func (p *PdhCounterSet) StartCollect() {
 					}).Debug("completed StartCollect() iteration")
 				}
 
-				teardown:
 				select{
 				case <- p.Done:
 					log.WithFields(log.Fields{
 						"host": p.Host,
-					}).Info("received instance done")
-					p.UnregisterPrometheusCollectors()
-					return
+					}).Info("instance Done channel was closed")
+					break loop // must specify name of loop or else it will just break out of select{}
 				case <- time.After(p.Interval):
 					// do nothing
 				}
 			}
 		}
 	}
+
+	return nil
 }
 
 // AddPrometheusCollector adds a new gauge into PromCollectors and updates the number in PromWaitGroup
