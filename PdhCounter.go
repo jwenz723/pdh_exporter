@@ -14,23 +14,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// PdhCounter defines a PDH counter object using a PDH path like: \PDH Category(PDH Instance)\PDH Counter
-type PdhCounter struct {
-	Path string
-}
-
-// TestEquivalence will test if a is equal to p
-func (p *PdhCounter) TestEquivalence(a *PdhCounter) bool {
-	return p.Path == a.Path
-}
-
 // PdhCounterSet defines a PdhCounter set to be collected on a single Host
 type PdhCounterSet struct {
 	completedInitialization bool // Indicates that the first iteration of StartCollect() has executed completely
-	Counters []PdhCounter // Contains all PdhCounter's to be collected
+	Counters []string // Contains all PdhCounter's to be collected
 	Done 	 chan struct{} // When this channel is closed, the collected Counters are unregistered from Prometheus and collection is stopped
 	Host     string // Defines the host to collect Counters from
 	Interval time.Duration // Defines the interval at which collection of Counters should be done
+	IsLocalhost bool // Indicates that collection is being done for the host that is running this app
 	PdhQHandle win.PDH_HQUERY // A handle to the PDH Query used for collecting Counters
 	PdhCHandles map[string]*PdhCHandle // A handle to each PDH Counter
 	PromCollectors map[string]prometheus.Gauge // Contains a reference to all prometheus collectors that have been created
@@ -89,7 +80,11 @@ func (p *PdhCounterSet) StartCollect() error {
 		}).Error("failed PdhOpenQuery")
 	} else {
 		for _, c := range p.Counters {
-			counter := fmt.Sprintf("\\\\%s%s", p.Host, c.Path)
+			counter := c
+			if !p.IsLocalhost {
+				counter = fmt.Sprintf("\\\\%s%s", p.Host, c)
+			}
+
 			var c win.PDH_HCOUNTER
 			ret = win.PdhValidatePath(counter)
 			if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
@@ -269,7 +264,7 @@ func (p *PdhCounterSet) TestEquivalence(a *PdhCounterSet) bool {
 	}
 
 	for i := range p.Counters {
-		if !p.Counters[i].TestEquivalence(&a.Counters[i]) {
+		if p.Counters[i] != a.Counters[i] {
 			return false
 		}
 	}

@@ -7,10 +7,9 @@ import (
 )
 
 type Config struct {
-	Counters      map[string][]PdhCounter
+	Counters      map[string][]string
 	HostNames     []string
 	Interval      int64
-	MetricPrefix string
 }
 
 func NewConfig(configPath string) (config Config) {

@@ -244,9 +244,11 @@ func ReadConfigFile(file string) {
 	config := NewConfig(file)
 
 	for _, hostName := range config.HostNames {
+		lh := false
 		if hostName == "localhost" {
 			if h, err := os.Hostname(); err == nil {
 				hostName = strings.ToUpper(h)
+				lh = true
 			}
 
 		}
@@ -254,9 +256,10 @@ func ReadConfigFile(file string) {
 		// if the hostname has not already been processed
 		if _, ok := newPCSCollectedSets[hostName]; !ok {
 			newPCSCollectedSets[hostName] = &PdhCounterSet{
-				Done: make(chan struct{}),
-				Host:     hostName,
-				Interval: time.Duration(config.Interval) * time.Second,
+				Done:        make(chan struct{}),
+				Host:        hostName,
+				Interval:    time.Duration(config.Interval) * time.Second,
+				IsLocalhost: lh,
 			}
 
 			// Add into cSet each PdhCounter that has a key that matches the hostname

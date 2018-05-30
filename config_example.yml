@@ -1,10 +1,24 @@
-metricprefix: 'myprefix'
+# interval is the number of seconds between each collection iteration
 interval: 5
+
+# counters contains a map of counters to be collected. Within each key-value pair the key represents a case-sensitive
+# regex pattern used to match collected hosts that are specified within the hostnames list. Within each key-value pair
+# the value contains a list of PDH strings representing the PDH counters that should be collected.
 counters:
+
+    # The key 'localhost' will never match anything because localhost contained in the hostnames list is
+    # replaced at runtime by the actual hostname.
+    localhost:
+        - '\My Category\My Counter'
+
+    # This will match all hosts contained within the hostnames list.
     .*:
-        - path: '\Processor(*)\% Processor Time'
-    .*host.*:
-        - path: '\Processor(*)\% User Time'
+        - '\Processor(*)\% Processor Time'
+
+    # This is a case-insensitive regex pattern matching anything that contains 'host'
+    (?i).*host.*:
+        - '\Processor(*)\% User Time'
+
 # The names of the hosts to collect counters from. This list should not contain duplicates.
 # If duplicates exist, only the first instance of the duplicated item will be processed.
 # Note that localhost will be replaced with the actual hostname of the machine executing
