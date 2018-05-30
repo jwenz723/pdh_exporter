@@ -7,26 +7,22 @@ import (
 )
 
 type Config struct {
-	Pdh_Counters PdhCounters
-}
-
-type PdhCounters struct {
 	Counters      map[string][]PdhCounter
 	HostNames     []string
 	Interval      int64
 	MetricPrefix string
 }
 
-func NewConfig(config_path string) (config Config) {
+func NewConfig(configPath string) (config Config) {
 
-	source, readfile_err := ioutil.ReadFile(config_path)
-	if readfile_err != nil {
-		log.Fatal(readfile_err)
+	source, readFileErr := ioutil.ReadFile(configPath)
+	if readFileErr != nil {
+		log.Fatal(readFileErr)
 	}
 
-	readyaml_err := yaml.Unmarshal(source, &config)
-	if readyaml_err != nil {
-		log.Fatal(readyaml_err)
+	readYamlErr := yaml.Unmarshal(source, &config)
+	if readYamlErr != nil {
+		log.Fatal(readYamlErr)
 	}
 
 	return

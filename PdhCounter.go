@@ -14,41 +14,33 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// PdhCounter defines a PDH counter object using a PDH path like: \PDH Category(PDH Instance)\PDH Counter
 type PdhCounter struct {
 	Path string
-	Multiplier float64
 }
 
 // TestEquivalence will test if a is equal to p
 func (p *PdhCounter) TestEquivalence(a *PdhCounter) bool {
-	return p.Path == a.Path && p.Multiplier == a.Multiplier
-}
-
-// UnmarshalYAML will be called any time the PdhCounter struct is being
-// unmarshaled. This function is being implemented so that PdhCounter can
-// have a default value set for Multiplier
-func (p *PdhCounter) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type rawPdhCounter PdhCounter
-	raw := rawPdhCounter{Multiplier:1.0} // Set default multiplier value of 1.0
-	if err := unmarshal(&raw); err != nil {
-		return err
-	}
-
-	*p = PdhCounter(raw)
-	return nil
+	return p.Path == a.Path
 }
 
 // PdhCounterSet defines a PdhCounter set to be collected on a single Host
 type PdhCounterSet struct {
-	completedInitialization bool
-	Counters []PdhCounter
+	completedInitialization bool // Indicates that the first iteration of StartCollect() has executed completely
+	Counters []PdhCounter // Contains all PdhCounter's to be collected
 	Done 	 chan struct{} // When this channel is closed, the collected Counters are unregistered from Prometheus and collection is stopped
-	Host     string
-	Interval time.Duration
-	PdhQHandle win.PDH_HQUERY
-	PdhCHandles map[string]*win.PDH_HCOUNTER
-	PromCollectors map[string]prometheus.Gauge
-	PromWaitGroup sync.WaitGroup
+	Host     string // Defines the host to collect Counters from
+	Interval time.Duration // Defines the interval at which collection of Counters should be done
+	PdhQHandle win.PDH_HQUERY // A handle to the PDH Query used for collecting Counters
+	PdhCHandles map[string]*PdhCHandle // A handle to each PDH Counter
+	PromCollectors map[string]prometheus.Gauge // Contains a reference to all prometheus collectors that have been created
+	PromWaitGroup sync.WaitGroup // This is used to track if PromCollectors still contains active collectors
+}
+
+// PdhCHandle links a PDH handle to the consecutive number of times it has been collected unsuccessfully
+type PdhCHandle struct {
+	handle *win.PDH_HCOUNTER
+	collectionFailures int
 }
 
 // StopCollect shuts down the collection that was started by StartCollect()
@@ -87,7 +79,7 @@ func (p *PdhCounterSet) StartCollect() error {
 		return err
 	}
 
-	p.PdhCHandles = map[string]*win.PDH_HCOUNTER{}
+	p.PdhCHandles = map[string]*PdhCHandle{}
 
 	ret := win.PdhOpenQuery(0, 0, &p.PdhQHandle)
 	if ret != win.ERROR_SUCCESS {
@@ -118,20 +110,24 @@ func (p *PdhCounterSet) StartCollect() error {
 						"host": p.Host,
 						"PDHError": fmt.Sprintf("%x",ret),
 					}).Error("failed PdhAddEnglishCounter")
+				} else {
+					log.WithFields(log.Fields{
+						"counter": counter,
+						"host": p.Host,
+						"PDHError": fmt.Sprintf("%x",ret),
+					}).Warn("failed PdhAddEnglishCounter, most likely because the counter doesn't exist.")
 				}
 				p.PromCollectors["FailedCollectors"].Add(1)
 				continue
 			}
 
-			p.PdhCHandles[counter] = &c
+			p.PdhCHandles[counter] = &PdhCHandle{handle: &c}
 		}
 
 		ret = win.PdhCollectQueryData(p.PdhQHandle)
 		if ret != win.ERROR_SUCCESS {
-			log.WithFields(log.Fields{
-				"host": p.Host,
-				"PDHError": fmt.Sprintf("%x",fmt.Sprintf("%x",ret)),
-			}).Error("failed PdhCollectQueryData")
+			// TODO: should I implement a custom error type here?
+			return errors.New(fmt.Sprintf("failed PdhCollectQueryData with PDH error code: %x", ret))
 		} else {
 			loop:
 			for {
@@ -143,18 +139,18 @@ func (p *PdhCounterSet) StartCollect() error {
 						var size = uint32(unsafe.Sizeof(win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE{}))
 						var emptyBuf [1]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE // need at least 1 addressable null ptr.
 
-						ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &emptyBuf[0])
+						ret = win.PdhGetFormattedCounterArrayDouble(*v.handle, &bufSize, &bufCount, &emptyBuf[0])
 						if ret == win.PDH_MORE_DATA {
 							filledBuf := make([]win.PDH_FMT_COUNTERVALUE_ITEM_DOUBLE, bufCount*size)
-							ret = win.PdhGetFormattedCounterArrayDouble(*v, &bufSize, &bufCount, &filledBuf[0])
+							ret = win.PdhGetFormattedCounterArrayDouble(*v.handle, &bufSize, &bufCount, &filledBuf[0])
 							if ret == win.ERROR_SUCCESS {
 								for i := 0; i < int(bufCount); i++ {
 									c := filledBuf[i]
 									s := win.UTF16PtrToString(c.SzName)
 
 									if val, ok := p.PromCollectors[k+s]; ok {
-										// TODO: implement counter multiplier
 										val.Set(c.FmtValue.DoubleValue)
+										v.collectionFailures = 0
 									} else {
 										if g, err := counterToPrometheusGauge(k, s); err == nil {
 											if err := p.AddPrometheusCollector(k+s, g); err != nil {
@@ -191,7 +187,20 @@ func (p *PdhCounterSet) StartCollect() error {
 										}
 									}
 								}
+							} else {
+								log.WithFields(log.Fields{
+									"counter": k,
+									"host": p.Host,
+									"PDHError": fmt.Sprintf("%x",ret),
+								}).Error("failed PdhGetFormattedCounterArrayDouble")
+								p.handleCollectionFailure(k, v, ret)
 							}
+						} else {
+							log.WithFields(log.Fields{
+								"counter": k,
+								"host": p.Host,
+							}).Warn("No data exists for counter.")
+							p.handleCollectionFailure(k, v, ret)
 						}
 					}
 				}
@@ -266,6 +275,24 @@ func (p *PdhCounterSet) TestEquivalence(a *PdhCounterSet) bool {
 	}
 
 	return true
+}
+
+// handleCollectionFailure is used to calculate when a counter should be deemed as non-collectible.
+func (p *PdhCounterSet) handleCollectionFailure(counter string, cHandle *PdhCHandle, ret uint32) {
+	cHandle.collectionFailures++
+
+	if cHandle.collectionFailures == 10 {
+		p.PromCollectors["FailedCollectors"].Add(1)
+
+		// stop collection of counter
+		delete(p.PdhCHandles, counter)
+
+		log.WithFields(log.Fields{
+			"counter":  counter,
+			"host":     p.Host,
+			"PDHError": fmt.Sprintf("%x",ret),
+		}).Info("Stopping collection of counter due to 10 consecutive failed attempts.")
+	}
 }
 
 // counterToPrometheusGauge converts a windows performance counter string into

@@ -38,8 +38,6 @@ var (
 	runningDir string
 )
 
-// Program structures.
-//  Define Start and Stop methods.
 type program struct {
 	exit chan struct{}
 }
@@ -245,7 +243,7 @@ func ReadConfigFile(file string) {
 	newPCSCollectedSets := map[string]*PdhCounterSet{}
 	config := NewConfig(file)
 
-	for _, hostName := range config.Pdh_Counters.HostNames {
+	for _, hostName := range config.HostNames {
 		if hostName == "localhost" {
 			if h, err := os.Hostname(); err == nil {
 				hostName = strings.ToUpper(h)
@@ -258,11 +256,11 @@ func ReadConfigFile(file string) {
 			newPCSCollectedSets[hostName] = &PdhCounterSet{
 				Done: make(chan struct{}),
 				Host:     hostName,
-				Interval: time.Duration(config.Pdh_Counters.Interval) * time.Second,
+				Interval: time.Duration(config.Interval) * time.Second,
 			}
 
 			// Add into cSet each PdhCounter that has a key that matches the hostname
-			for k, v := range config.Pdh_Counters.Counters {
+			for k, v := range config.Counters {
 				if matched, _ := regexp.MatchString(k, hostName); matched {
 					for _, counter := range v {
 						newPCSCollectedSets[hostName].Counters = append(newPCSCollectedSets[hostName].Counters, counter)
