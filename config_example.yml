@@ -1,30 +1,32 @@
-# interval is the number of seconds between each collection iteration
-interval: 5
+# Interval is the number of seconds between each collection iteration
+Interval: 5
 
-# counters contains a map of counters to be collected. Within each key-value pair the key represents a case-sensitive
-# regex pattern used to match collected hosts that are specified within the hostnames list. Within each key-value pair
+# Counters contains a map of counters to be collected. Within each key-value pair the key represents a case-insensitive
+# regex pattern used to match collected hosts that are specified within the HostNames list. Within each key-value pair
 # the value contains a list of PDH strings representing the PDH counters that should be collected.
-counters:
+Counters:
 
-    # The key 'localhost' will never match anything because localhost contained in the hostnames list is
+    # The key 'localhost' will never match anything because localhost contained in the HostNames list is
     # replaced at runtime by the actual hostname.
     localhost:
         - '\My Category\My Counter'
 
-    # This will match all hosts contained within the hostnames list.
+    # This will match all hosts contained within the HostNames list.
     .*:
         - '\Processor(*)\% Processor Time'
 
-    # This is a case-insensitive regex pattern matching anything that contains 'host'
-    (?i).*host.*:
-        - '\Processor(*)\% User Time'
+# ExcludeCounters functions the same way as Counters except that anything defined in ExcludeCounters will be removed
+# from Counters at run time.
+ExcludeCounters:
+      .*host2.*:
+            - '\My Category\My Counter'
 
 # The names of the hosts to collect counters from. This list should not contain duplicates.
 # If duplicates exist, only the first instance of the duplicated item will be processed.
 # Note that localhost will be replaced with the actual hostname of the machine executing
 # the pdhexport application. Also note that remote collection of PDH counters is unstable when done in large batches.
-# Therefore, it is suggested you run this app locally on each host then collect the data from each
+# Therefore, it is suggested that you run this app locally on each host then collect the data from each
 # host using the prometheus /metrics http endpoint.
-hostnames:
+HostNames:
     - 'localhost' # this will be automatically replaced with the actual hostname
     - 'host2'

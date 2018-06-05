@@ -1,4 +1,4 @@
-package main
+package PdhCounter
 
 import (
 	"errors"
@@ -9,23 +9,136 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/lxn/win"
+	"github.com/jwenz723/win"
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 )
 
+type pdhCounter struct{
+	Path             	string `yaml:"Path"`   // The path to the PDH counter to be collected
+	ExcludeInstances 	[]string // A list of PDH instances to be excluded from collection
+	MachineName string
+	ObjectName string
+	InstanceName string
+	ParentInstance string
+	InstanceIndex uint32
+	CounterName string
+}
+
+// Instance returns the combination of ParentInstance, InstanceName, and InstanceIndex according to
+// https://msdn.microsoft.com/en-us/library/windows/desktop/aa373193%28v=vs.85%29.aspx?f=255&MSPPError=-2147217396
+func (p *pdhCounter) Instance() string {
+	pi := ""
+	ii := ""
+
+	if p.ParentInstance != "" {
+		pi = fmt.Sprintf("%s/", p.ParentInstance)
+	}
+
+	if p.InstanceIndex > 0 {
+		ii = fmt.Sprintf("#%d", p.InstanceIndex)
+	}
+
+	return fmt.Sprintf("%s%s%s", pi, p.InstanceName, ii)
+}
+
+// ContainsPdhCounter will test if p contains c
+func (p *pdhCounter) ContainsPdhCounter(c *pdhCounter) bool {
+	if p.Path == c.Path {
+		return true
+	} else if strings.Contains(p.Instance(), "*") && p.MachineName == c.MachineName && p.ObjectName == c.ObjectName && p.CounterName == c.CounterName {
+		if p.Instance() == "*" {
+			return true
+		} else {
+			m := strings.Replace("chrome*", "*", ".*", 1)
+			matched, err := regexp.MatchString(m, "chrome#1")
+			fmt.Printf("Matched: %v, err: %v\n", matched, err)
+			//m := strings.Replace(p.Instance(), "*", ".*", 1)
+			//if matched, err := regexp.MatchString(m, c.Instance()); err != nil {
+			//	fmt.Println(err)
+			//} else if matched {
+			//	return true
+			//}
+		}
+		//if p.Instance() == "*" {
+		//	return true
+		//} else if p.InstanceName[:len(p.InstanceName)-1] == c.InstanceName {
+		//	return true
+		//}
+		//
+		//return true
+	}
+	return false
+}
+
+// NewPdhCounter will create a new pdhCounter instance with all fields populated if the specified path exists
+func NewPdhCounter(hostname, path string) (*pdhCounter, error) {
+	if hostname != "" {
+		path = fmt.Sprintf(`\\%s%s`, hostname, path)
+	}
+
+	var c win.PDH_COUNTER_PATH_ELEMENTS
+	var b uint32
+	if ret := win.PdhParseCounterPath(path, nil, &b); ret == win.PDH_MORE_DATA {
+		if ret = win.PdhParseCounterPath(path, &c, &b); ret == win.ERROR_SUCCESS {
+			p := pdhCounter{
+				Path: path,
+				MachineName: win.UTF16PtrToString(c.MachineName)[2:],
+				ObjectName: win.UTF16PtrToString(c.ObjectName),
+				InstanceName: win.UTF16PtrToString(c.InstanceName),
+				ParentInstance: win.UTF16PtrToString(c.ParentInstance),
+				InstanceIndex: c.InstanceIndex,
+				CounterName: win.UTF16PtrToString(c.CounterName),
+			}
+
+			return &p, nil
+		} else {
+			// Failed to parse counter
+			// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+			return nil, errors.New("failed to create PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
+		}
+	} else {
+		// Failed to obtain buffer info
+		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+		return nil, errors.New("failed to obtain buffer info for PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
+	}
+}
+
+// Instance will return the PDH instance contained within the Path of p
+//func (p *pdhCounter) Instance() string {
+//	re := regexp.MustCompile(`\((.*\)\()?(.+)\)\\`)
+//
+//	m := re.FindAllStringSubmatch(p.Path, 2)
+//
+//	if m != nil && len(m) == 1 && len(m[0]) == 3 {
+//		return m[0][2]
+//	}
+//	return ""
+//}
+
+//func (p *PdhCounter) ContainsInstance(a *PdhCounter) bool {
+//	i := p.Instance()
+//	if i == "*" && a.Instance() != "" {
+//
+//	} else if i == "" {
+//		return p.Path == a.Path
+//	} else {
+//		return p.Instance() == a.Instance()
+//	}
+//}
+
 // PdhCounterSet defines a PdhCounter set to be collected on a single Host
 type PdhCounterSet struct {
-	completedInitialization bool // Indicates that the first iteration of StartCollect() has executed completely
-	Counters []string // Contains all PdhCounter's to be collected
-	Done 	 chan struct{} // When this channel is closed, the collected Counters are unregistered from Prometheus and collection is stopped
-	Host     string // Defines the host to collect Counters from
-	Interval time.Duration // Defines the interval at which collection of Counters should be done
-	IsLocalhost bool // Indicates that collection is being done for the host that is running this app
-	PdhQHandle win.PDH_HQUERY // A handle to the PDH Query used for collecting Counters
-	PdhCHandles map[string]*PdhCHandle // A handle to each PDH Counter
-	PromCollectors map[string]prometheus.Gauge // Contains a reference to all prometheus collectors that have been created
-	PromWaitGroup sync.WaitGroup // This is used to track if PromCollectors still contains active collectors
+	completedInitialization 	bool // Indicates that the first iteration of StartCollect() has executed completely
+	Counters 					[]*pdhCounter // Contains all PdhCounter's to be collected
+	Done 	 					chan struct{} // When this channel is closed, the collected Counters are unregistered from Prometheus and collection is stopped
+	Host     					string // Defines the host to collect Counters from
+	Interval 					time.Duration // Defines the interval at which collection of Counters should be done
+	IsLocalhost 				bool // Indicates that collection is being done for the host that is running this app
+	PdhQHandle 					win.PDH_HQUERY // A handle to the PDH Query used for collecting Counters
+	PdhCHandles 				map[string]*PdhCHandle // A handle to each PDH Path
+	PromCollectors 				map[string]prometheus.Gauge // Contains a reference to all prometheus collectors that have been created
+	PromWaitGroup 				sync.WaitGroup // This is used to track if PromCollectors still contains active collectors
 }
 
 // PdhCHandle links a PDH handle to the consecutive number of times it has been collected unsuccessfully
@@ -79,35 +192,35 @@ func (p *PdhCounterSet) StartCollect() error {
 			"PDHError": fmt.Sprintf("%x",ret),
 		}).Error("failed PdhOpenQuery")
 	} else {
-		for _, c := range p.Counters {
-			counter := c
+		for _, counter := range p.Counters {
 			if !p.IsLocalhost {
-				counter = fmt.Sprintf("\\\\%s%s", p.Host, c)
+				// TODO: should hostname be appended elsewhere?
+				counter.Path = fmt.Sprintf("\\\\%s%s", p.Host, counter.Path)
 			}
 
-			var c win.PDH_HCOUNTER
-			ret = win.PdhValidatePath(counter)
+			var ch win.PDH_HCOUNTER
+			ret = win.PdhValidatePath(counter.Path)
 			if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
 				log.WithFields(log.Fields{
 					"host": p.Host,
-					"counter": counter,
+					"counter": counter.Path,
 					"PDHError": fmt.Sprintf("%x",ret),
 				}).Error("failed PdhValidatePath")
 				p.PromCollectors["FailedCollectors"].Add(1)
 				continue
 			}
 
-			ret = win.PdhAddEnglishCounter(p.PdhQHandle, counter, 0, &c)
+			ret = win.PdhAddEnglishCounter(p.PdhQHandle, counter.Path, 0, &ch)
 			if ret != win.ERROR_SUCCESS {
 				if ret != win.PDH_CSTATUS_NO_OBJECT {
 					log.WithFields(log.Fields{
-						"counter": counter,
+						"counter": counter.Path,
 						"host": p.Host,
 						"PDHError": fmt.Sprintf("%x",ret),
 					}).Error("failed PdhAddEnglishCounter")
 				} else {
 					log.WithFields(log.Fields{
-						"counter": counter,
+						"counter": counter.Path,
 						"host": p.Host,
 						"PDHError": fmt.Sprintf("%x",ret),
 					}).Warn("failed PdhAddEnglishCounter, most likely because the counter doesn't exist.")
@@ -116,7 +229,7 @@ func (p *PdhCounterSet) StartCollect() error {
 				continue
 			}
 
-			p.PdhCHandles[counter] = &PdhCHandle{handle: &c}
+			p.PdhCHandles[counter.Path] = &PdhCHandle{handle: &ch}
 		}
 
 		ret = win.PdhCollectQueryData(p.PdhQHandle)
@@ -147,7 +260,8 @@ func (p *PdhCounterSet) StartCollect() error {
 										val.Set(c.FmtValue.DoubleValue)
 										v.collectionFailures = 0
 									} else {
-										if g, err := counterToPrometheusGauge(k, s); err == nil {
+										// TODO: is there a better way to pass hostname to the prometheus conversion?
+										if g, err := counterToPrometheusGauge(p.Host, k, s); err == nil {
 											if err := p.AddPrometheusCollector(k+s, g); err != nil {
 												if e, ok := err.(prometheus.AlreadyRegisteredError); ok {
 													log.WithFields(log.Fields{
@@ -264,7 +378,7 @@ func (p *PdhCounterSet) TestEquivalence(a *PdhCounterSet) bool {
 	}
 
 	for i := range p.Counters {
-		if p.Counters[i] != a.Counters[i] {
+		if p.Counters[i].Path != a.Counters[i].Path {
 			return false
 		}
 	}
@@ -300,9 +414,8 @@ func (p *PdhCounterSet) handleCollectionFailure(counter string, cHandle *PdhCHan
 //			- Label values: may contain any Unicode characters
 //
 // Additional Prometheus Metric/Label naming conventions: https://prometheus.io/docs/practices/naming/
-func counterToPrometheusGauge(counter, instance string) (prometheus.GaugeOpts, error) {
+func counterToPrometheusGauge(hostname, counter, instance string) (prometheus.GaugeOpts, error) {
 	fields := strings.Split(counter, "\\")
-	var hostname string
 	var catIndex int
 	var valIndex int
 	var category string
@@ -313,7 +426,6 @@ func counterToPrometheusGauge(counter, instance string) (prometheus.GaugeOpts, e
 		catIndex = 3
 		valIndex = 4
 	} else if len(fields) == 3 {
-		hostname = "localhost"
 		catIndex = 1
 		valIndex = 2
 	} else {

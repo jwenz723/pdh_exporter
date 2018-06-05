@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jwenz723/pdhexport/PdhCounter"
 	"github.com/kardianos/service"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
@@ -26,7 +27,7 @@ var (
 	svcFlag = flag.String("service", "", "Control the system service. Valid actions: start, stop, restart, install, uninstall")
 
 	// A map containing a reference to all PdhCounterSet that are being collected
-	PCSCollectedSets = map[string]*PdhCounterSet{}
+	PCSCollectedSets = map[string]*PdhCounter.PdhCounterSet{}
 
 	// PCSCollectedSetsMux is used to insure safe writing to PCSCollectedSets
 	PCSCollectedSetsMux = &sync.Mutex{}
@@ -36,6 +37,9 @@ var (
 
 	// contains the running directory of the application
 	runningDir string
+
+	// contains the name of the host running the application
+	hostName string
 )
 
 type program struct {
@@ -100,6 +104,12 @@ func (p *program) run() error {
 
 	configChan := make(chan struct{})
 	errorsChan := make(chan error)
+
+	if h, err := os.Hostname(); err == nil {
+		hostName = strings.ToUpper(h)
+	} else {
+		return err
+	}
 
 	// TODO: find a better way to handle a consistent config path across different start methods (service or terminal)
 	if *config == "config.yml" {
@@ -240,36 +250,127 @@ func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan e
 
 // ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet that are new to addPCSChan
 func ReadConfigFile(file string) {
-	newPCSCollectedSets := map[string]*PdhCounterSet{}
+	newPCSCollectedSets := map[string]*PdhCounter.PdhCounterSet{}
 	config := NewConfig(file)
 
-	for _, hostName := range config.HostNames {
-		lh := false
-		if hostName == "localhost" {
-			if h, err := os.Hostname(); err == nil {
-				hostName = strings.ToUpper(h)
-				lh = true
-			}
-
+	for _, h := range config.HostNames {
+		lh := h == "LOCALHOST"
+		if lh {
+			h = hostName
 		}
 
 		// if the hostname has not already been processed
-		if _, ok := newPCSCollectedSets[hostName]; !ok {
-			newPCSCollectedSets[hostName] = &PdhCounterSet{
+		if _, ok := newPCSCollectedSets[h]; !ok {
+			newPCSCollectedSets[h] = &PdhCounter.PdhCounterSet{
 				Done:        make(chan struct{}),
-				Host:        hostName,
+				Host:        h,
 				Interval:    time.Duration(config.Interval) * time.Second,
 				IsLocalhost: lh,
 			}
 
-			// Add into cSet each PdhCounter that has a key that matches the hostname
-			for k, v := range config.Counters {
-				if matched, _ := regexp.MatchString(k, hostName); matched {
+			// Build a list of all counters that should be excluded from collection for this host
+			exCounters := map[string]struct{}{}
+			for k, v := range config.ExcludeCounters {
+				if matched, _ := regexp.MatchString(string(k), h); matched {
 					for _, counter := range v {
-						newPCSCollectedSets[hostName].Counters = append(newPCSCollectedSets[hostName].Counters, counter)
+						exCounters[counter] = struct{}{}
 					}
 				}
 			}
+
+			//pdhEscRep := strings.NewReplacer(
+			//	`\`, `\\`,
+			//	`(`,`\(`,
+			//	`)`,`\)`,
+			//	`[`,`\[`,
+			//	`]`,`\]`,
+			//	`{`,`\{`,
+			//	`}`,`\}`,
+			//	`.`,`\.`,
+			//	`^`,`\^`,
+			//	`$`,`\$`,
+			//	`+`,`\+`,
+			//	`?`,`\?`,
+			//	`*`,`\*`,
+			//)
+
+			// Add all counters that should be collected for this host
+			for k, v := range config.Counters {
+				if matched, _ := regexp.MatchString(string(k), h); matched {
+					counterloop:
+					for _, counterPath := range v {
+						//var c win.PDH_COUNTER_PATH_ELEMENTS
+						//var b uint32
+						//testPath := counterPath.Path
+						//if !lh {
+						//	// TODO: should hostname be appended elsewhere?
+						//	testPath = fmt.Sprintf("\\\\%s%s", h, counterPath.Path)
+						//}
+						//if ret := win.PdhParseCounterPath(testPath, nil, &b); ret == win.PDH_MORE_DATA {
+						//	if ret = win.PdhParseCounterPath(testPath, &c, &b); ret == win_pdh.PDH_MORE_DATA {
+						//		fmt.Printf("MachineName: %s\n", win.UTF16PtrToString(c.MachineName)[2:])
+						//		fmt.Printf("ObjectName: %s\n", win.UTF16PtrToString(c.ObjectName))
+						//		fmt.Printf("InstanceName: %s\n", win.UTF16PtrToString(c.InstanceName))
+						//		fmt.Printf("CounterName: %s\n", win.UTF16PtrToString(c.CounterName))
+						//	} else {
+						//		// Failed to parse counterPath
+						//		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+						//	}
+						//} else {
+						//	// Failed to obtain buffer info
+						//	// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+						//}
+
+
+						p, err := PdhCounter.NewPdhCounter(h, counterPath)
+						if err != nil {
+							log.WithFields(log.Fields{
+								"host": h,
+								"counter": counterPath,
+							}).Errorf("Error experienced in NewPdhCounter -> %s", err)
+							continue counterloop
+						}
+
+
+
+						// if counterPath has an exact match in exCounters
+						if _, ok := exCounters[counterPath]; !ok {
+							// If counterPath contains a * instance definition, then we need to check
+							// if specific instances have been excluded
+							if strings.Contains(p.InstanceName, "*") {
+								for exK, _ := range exCounters {
+									if exP, err := PdhCounter.NewPdhCounter(h, exK); err != nil {
+										panic(err)
+									} else if p.ContainsPdhCounter(exP) {
+										p.ExcludeInstances = append(p.ExcludeInstances, exP.Instance())
+									} else {
+										fmt.Println(p.MachineName == exP.MachineName, p.ObjectName == exP.ObjectName, p.CounterName == exP.CounterName)
+									}
+								}
+								newPCSCollectedSets[h].Counters = append(newPCSCollectedSets[h].Counters, p)
+							} else {
+								// check if any of the exclude counters have a * instance definition that will match this instance
+								// TODO: figure out how to refactor this
+								//for _, exV := range exCounters {
+								//	if exV.Instance() == "*" {
+								//		exPattern := pdhEscRep.Replace(exV.Path)
+								//		exPattern = strings.Replace(exPattern, `\(\*\)\\`, `\(.*\)\\`, 1)
+								//		if matched, _ := regexp.MatchString(exPattern, counterPath.Path); matched {
+								//			// exclude counterPath
+								//			continue counterloop
+								//		}
+								//	}
+								//}
+								//newPCSCollectedSets[h].Counters = append(newPCSCollectedSets[h].Counters, PdhCounter{Path: counterPath.Path})
+							}
+						} else {
+							fmt.Printf("%s: excluding %s\n", h, counterPath)
+						}
+					}
+				}
+			}
+
+
 		}
 	}
 
@@ -300,7 +401,7 @@ func ReadConfigFile(file string) {
 		}
 
 		if len(cSet.Counters) > 0 && newSet {
-			go func(cSet PdhCounterSet) {
+			go func(cSet PdhCounter.PdhCounterSet) {
 				PCSCollectedSetsMux.Lock()
 				PCSCollectedSets[cSet.Host] = &cSet
 				PCSCollectedSetsMux.Unlock()
