@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	//"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +24,7 @@ var (
 	addr = flag.String("listen-address", ":8080", "The address to listen on for HTTP requests.")
 	config = flag.String("config", "config.yml", "Fully qualified path to yml formatted config file.")
 	logDirectory = flag.String("logDirectory", "logs", "Specify a directory where logs should be written to. Use \"\" to log to stdout.")
-	logLevel = flag.String("logLevel", "info", "Use this flag to specify what level of logging you wish to have output. Available values: panic, fatal, error, warn, info, debug.")
+	logLevel = flag.String("logLevel", "debug", "Use this flag to specify what level of logging you wish to have output. Available values: panic, fatal, error, warn, info, debug.")
 	JSONOutput = flag.Bool("JSONOutput", false, "Use this flag to turn on json formatted logging.")
 	svcFlag = flag.String("service", "", "Control the system service. Valid actions: start, stop, restart, install, uninstall")
 
@@ -121,7 +123,7 @@ func (p *program) run() error {
 		for {
 			select {
 			case <- configChan:
-				log.Infof("%s changed\n", *config)
+				log.WithField("host", hostName).Infof("%s changed\n", *config)
 				go ReadConfigFile(*config)
 			case err := <-errorsChan:
 				log.Fatalf("error occurred while watching %s -> %s\n", *config, err)
@@ -250,6 +252,11 @@ func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan e
 
 // ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet that are new to addPCSChan
 func ReadConfigFile(file string) {
+	log.WithFields(log.Fields{
+		"host": hostName,
+		"config": file,
+	}).Debug("Reading config file")
+
 	newPCSCollectedSets := map[string]*PdhCounter.PdhCounterSet{}
 	config := NewConfig(file)
 
@@ -261,7 +268,9 @@ func ReadConfigFile(file string) {
 
 		// if the hostname has not already been processed
 		if _, ok := newPCSCollectedSets[h]; !ok {
-			newPCSCollectedSets[h] = &PdhCounter.PdhCounterSet{
+			log.WithField("host", "h").Debug("Determining counters for host")
+
+			pcs := &PdhCounter.PdhCounterSet{
 				Done:        make(chan struct{}),
 				Host:        h,
 				Interval:    time.Duration(config.Interval) * time.Second,
@@ -269,14 +278,14 @@ func ReadConfigFile(file string) {
 			}
 
 			// Build a list of all counters that should be excluded from collection for this host
-			exCounters := map[string]struct{}{}
-			for k, v := range config.ExcludeCounters {
-				if matched, _ := regexp.MatchString(string(k), h); matched {
-					for _, counter := range v {
-						exCounters[counter] = struct{}{}
-					}
-				}
-			}
+			//exCounters := map[string]struct{}{}
+			//for k, v := range config.ExcludeCounters {
+			//	if matched, _ := regexp.MatchString(string(k), h); matched {
+			//		for _, counter := range v {
+			//			exCounters[counter] = struct{}{}
+			//		}
+			//	}
+			//}
 
 			//pdhEscRep := strings.NewReplacer(
 			//	`\`, `\\`,
@@ -294,34 +303,38 @@ func ReadConfigFile(file string) {
 			//	`*`,`\*`,
 			//)
 
+			//ic := make(chan Test)
+			//go func(hostname string, pcs *PdhCounter.PdhCounterSet) {
+			//	for counterSet := range ic {
+			//		if matched, _ := regexp.MatchString(counterSet.Key, hostname); matched {
+			//		counterloop:
+			//			for _, counterPath := range counterSet.Value {
+			//				p, err := PdhCounter.NewPdhCounter(hostname, counterPath)
+			//				if err != nil {
+			//					log.WithFields(log.Fields{
+			//						"host": hostname,
+			//						"counter": counterPath,
+			//					}).Errorf("Error experienced in NewPdhCounter -> %s", err)
+			//					continue counterloop
+			//				}
+			//
+			//				pcs.Counters = append(pcs.Counters, p)
+			//			}
+			//		}
+			//	}
+			//
+			//	newPCSCollectedSets[hostname] = pcs
+			//}(h, pcs)
+			//
+			//if err := config.IterateCounters(ic); err != nil {
+			//	fmt.Println(err)
+			//}
+
 			// Add all counters that should be collected for this host
 			for k, v := range config.Counters {
-				if matched, _ := regexp.MatchString(string(k), h); matched {
+				if matched, _ := regexp.MatchString(k, h); matched {
 					counterloop:
 					for _, counterPath := range v {
-						//var c win.PDH_COUNTER_PATH_ELEMENTS
-						//var b uint32
-						//testPath := counterPath.Path
-						//if !lh {
-						//	// TODO: should hostname be appended elsewhere?
-						//	testPath = fmt.Sprintf("\\\\%s%s", h, counterPath.Path)
-						//}
-						//if ret := win.PdhParseCounterPath(testPath, nil, &b); ret == win.PDH_MORE_DATA {
-						//	if ret = win.PdhParseCounterPath(testPath, &c, &b); ret == win_pdh.PDH_MORE_DATA {
-						//		fmt.Printf("MachineName: %s\n", win.UTF16PtrToString(c.MachineName)[2:])
-						//		fmt.Printf("ObjectName: %s\n", win.UTF16PtrToString(c.ObjectName))
-						//		fmt.Printf("InstanceName: %s\n", win.UTF16PtrToString(c.InstanceName))
-						//		fmt.Printf("CounterName: %s\n", win.UTF16PtrToString(c.CounterName))
-						//	} else {
-						//		// Failed to parse counterPath
-						//		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
-						//	}
-						//} else {
-						//	// Failed to obtain buffer info
-						//	// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
-						//}
-
-
 						p, err := PdhCounter.NewPdhCounter(h, counterPath)
 						if err != nil {
 							log.WithFields(log.Fields{
@@ -331,46 +344,45 @@ func ReadConfigFile(file string) {
 							continue counterloop
 						}
 
-
+						pcs.Counters = append(pcs.Counters, p)
 
 						// if counterPath has an exact match in exCounters
-						if _, ok := exCounters[counterPath]; !ok {
-							// If counterPath contains a * instance definition, then we need to check
-							// if specific instances have been excluded
-							if strings.Contains(p.InstanceName, "*") {
-								for exK, _ := range exCounters {
-									if exP, err := PdhCounter.NewPdhCounter(h, exK); err != nil {
-										panic(err)
-									} else if p.ContainsPdhCounter(exP) {
-										p.ExcludeInstances = append(p.ExcludeInstances, exP.Instance())
-									} else {
-										fmt.Println(p.MachineName == exP.MachineName, p.ObjectName == exP.ObjectName, p.CounterName == exP.CounterName)
-									}
-								}
-								newPCSCollectedSets[h].Counters = append(newPCSCollectedSets[h].Counters, p)
-							} else {
-								// check if any of the exclude counters have a * instance definition that will match this instance
-								// TODO: figure out how to refactor this
-								//for _, exV := range exCounters {
-								//	if exV.Instance() == "*" {
-								//		exPattern := pdhEscRep.Replace(exV.Path)
-								//		exPattern = strings.Replace(exPattern, `\(\*\)\\`, `\(.*\)\\`, 1)
-								//		if matched, _ := regexp.MatchString(exPattern, counterPath.Path); matched {
-								//			// exclude counterPath
-								//			continue counterloop
-								//		}
-								//	}
-								//}
-								//newPCSCollectedSets[h].Counters = append(newPCSCollectedSets[h].Counters, PdhCounter{Path: counterPath.Path})
-							}
-						} else {
-							fmt.Printf("%s: excluding %s\n", h, counterPath)
-						}
+						//if _, ok := exCounters[counterPath]; !ok {
+						//	// If counterPath contains a * instance definition, then we need to check
+						//	// if specific instances have been excluded
+						//	if strings.Contains(p.InstanceName, "*") {
+						//		for exK, _ := range exCounters {
+						//			if exP, err := PdhCounter.NewPdhCounter(h, exK); err != nil {
+						//				panic(err)
+						//			} else if p.ContainsPdhCounter(exP) {
+						//				p.ExcludeInstances = append(p.ExcludeInstances, exP.Instance())
+						//			} else {
+						//				fmt.Println(p.MachineName == exP.MachineName, p.ObjectName == exP.ObjectName, p.CounterName == exP.CounterName)
+						//			}
+						//		}
+						//		newPCSCollectedSets[h].Counters = append(newPCSCollectedSets[h].Counters, p)
+						//	} else {
+						//		// check if any of the exclude counters have a * instance definition that will match this instance
+						//		for exK, _ := range exCounters {
+						//			if exP, err := PdhCounter.NewPdhCounter(h, exK); err != nil {
+						//				panic(err)
+						//			} else if exP.ContainsPdhCounter(p) {
+						//				// exclude counterPath
+						//				continue counterloop
+						//			}
+						//		}
+						//		newPCSCollectedSets[h].Counters = append(newPCSCollectedSets[h].Counters, p)
+						//	}
+						//}
 					}
 				}
 			}
 
-
+			log.WithFields(log.Fields{
+				"counterCount": len(pcs.Counters),
+				"host": pcs.Host,
+			}).Debug("Finished determining counters for host")
+			newPCSCollectedSets[h] = pcs
 		}
 	}
 
@@ -401,9 +413,9 @@ func ReadConfigFile(file string) {
 		}
 
 		if len(cSet.Counters) > 0 && newSet {
-			go func(cSet PdhCounter.PdhCounterSet) {
+			go func(cSet *PdhCounter.PdhCounterSet) {
 				PCSCollectedSetsMux.Lock()
-				PCSCollectedSets[cSet.Host] = &cSet
+				PCSCollectedSets[cSet.Host] = cSet
 				PCSCollectedSetsMux.Unlock()
 
 				if err := cSet.StartCollect(); err != nil {
@@ -419,7 +431,8 @@ func ReadConfigFile(file string) {
 				log.WithFields(log.Fields{
 					"host": cSet.Host,
 				}).Info("finished StartCollect()\n")
-			}(*cSet)
+			}(cSet)
+
 			log.Debugf("%s: sent new PdhCounterSet\n", hostName)
 		}
 	}

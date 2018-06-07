@@ -46,62 +46,90 @@ func (p *pdhCounter) Instance() string {
 func (p *pdhCounter) ContainsPdhCounter(c *pdhCounter) bool {
 	if p.Path == c.Path {
 		return true
-	} else if strings.Contains(p.Instance(), "*") && p.MachineName == c.MachineName && p.ObjectName == c.ObjectName && p.CounterName == c.CounterName {
+	} else if p.MachineName == c.MachineName && p.ObjectName == c.ObjectName && p.CounterName == c.CounterName {
 		if p.Instance() == "*" {
 			return true
-		} else {
-			m := strings.Replace("chrome*", "*", ".*", 1)
-			matched, err := regexp.MatchString(m, "chrome#1")
-			fmt.Printf("Matched: %v, err: %v\n", matched, err)
-			//m := strings.Replace(p.Instance(), "*", ".*", 1)
-			//if matched, err := regexp.MatchString(m, c.Instance()); err != nil {
-			//	fmt.Println(err)
-			//} else if matched {
-			//	return true
-			//}
+		} else if len(p.InstanceName) > 0 && p.InstanceName[:len(p.InstanceName)-1] == c.InstanceName { // if p.InstanceName is something like chrome*
+			return true
 		}
-		//if p.Instance() == "*" {
-		//	return true
-		//} else if p.InstanceName[:len(p.InstanceName)-1] == c.InstanceName {
-		//	return true
-		//}
-		//
-		//return true
 	}
 	return false
 }
 
+func (p *pdhCounter) parsePdhCounterPathElements(c win.PDH_COUNTER_PATH_ELEMENTS) {
+	if c.MachineName != nil {
+		p.MachineName = win.UTF16PtrToString(c.MachineName)[2:]
+	}
+
+	if c.ObjectName != nil {
+		p.ObjectName = win.UTF16PtrToString(c.ObjectName)
+	}
+
+	if c.InstanceName != nil {
+		p.InstanceName = win.UTF16PtrToString(c.InstanceName)
+	}
+
+	if c.ParentInstance != nil {
+		p.ParentInstance = win.UTF16PtrToString(c.ParentInstance)
+	}
+
+	p.InstanceIndex = c.InstanceIndex
+
+	if c.CounterName != nil {
+		p.CounterName = win.UTF16PtrToString(c.CounterName)
+	}
+}
+
 // NewPdhCounter will create a new pdhCounter instance with all fields populated if the specified path exists
 func NewPdhCounter(hostname, path string) (*pdhCounter, error) {
+	//fmt.Printf("NewPdhCounter: \\%s%s\n", hostname, path)
 	if hostname != "" {
 		path = fmt.Sprintf(`\\%s%s`, hostname, path)
 	}
 
-	var c win.PDH_COUNTER_PATH_ELEMENTS
-	var b uint32
-	if ret := win.PdhParseCounterPath(path, nil, &b); ret == win.PDH_MORE_DATA {
-		if ret = win.PdhParseCounterPath(path, &c, &b); ret == win.ERROR_SUCCESS {
-			p := pdhCounter{
-				Path: path,
-				MachineName: win.UTF16PtrToString(c.MachineName)[2:],
-				ObjectName: win.UTF16PtrToString(c.ObjectName),
-				InstanceName: win.UTF16PtrToString(c.InstanceName),
-				ParentInstance: win.UTF16PtrToString(c.ParentInstance),
-				InstanceIndex: c.InstanceIndex,
-				CounterName: win.UTF16PtrToString(c.CounterName),
-			}
+	p := pdhCounter{Path:path}
+	return &p, nil
 
-			return &p, nil
-		} else {
-			// Failed to parse counter
-			// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
-			return nil, errors.New("failed to create PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
-		}
-	} else {
-		// Failed to obtain buffer info
-		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
-		return nil, errors.New("failed to obtain buffer info for PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
-	}
+	//s, ret := win.PdhParseCounterPathTwo(path)
+	//if ret != win.ERROR_SUCCESS {
+	//	return nil, errors.New(fmt.Sprintf("error in PdhParseCounterPathTwo -> %x", ret))
+	//}
+	//
+	//p.MachineName = s[0]
+	//p.ObjectName = s[1]
+	//p.InstanceName = s[2]
+	//p.CounterName = s[3]
+	//
+	//return &p, nil
+
+	//var c win.PDH_COUNTER_PATH_ELEMENTS
+	//var b uint32
+	//if ret := win.PdhParseCounterPath(path, nil, &b); ret == win.PDH_MORE_DATA {
+	//	if ret := win.PdhParseCounterPath(path, &c, &b); ret == win.ERROR_SUCCESS {
+			//p := pdhCounter{
+			//	Path: path,
+			//	MachineName: win.UTF16PtrToString(c.MachineName)[2:],
+			//	ObjectName: win.UTF16PtrToString(c.ObjectName),
+			//	InstanceName: win.UTF16PtrToString(c.InstanceName),
+			//	ParentInstance: win.UTF16PtrToString(c.ParentInstance),
+			//	InstanceIndex: c.InstanceIndex,
+			//	CounterName: win.UTF16PtrToString(c.CounterName),
+			//}
+			//fmt.Printf("did stuff\n")
+			//p.parsePdhCounterPathElements(c)
+
+
+	//		return &p, nil
+	//	} else {
+	//		// Failed to parse counter
+	//		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+	//		return nil, errors.New("failed to create PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
+	//	}
+	//} else {
+	//	// Failed to obtain buffer info
+	//	// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+	//	return nil, errors.New("failed to obtain buffer info for PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
+	//}
 }
 
 // Instance will return the PDH instance contained within the Path of p
@@ -138,7 +166,7 @@ type PdhCounterSet struct {
 	PdhQHandle 					win.PDH_HQUERY // A handle to the PDH Query used for collecting Counters
 	PdhCHandles 				map[string]*PdhCHandle // A handle to each PDH Path
 	PromCollectors 				map[string]prometheus.Gauge // Contains a reference to all prometheus collectors that have been created
-	PromWaitGroup 				sync.WaitGroup // This is used to track if PromCollectors still contains active collectors
+	PromWaitGroup 				*sync.WaitGroup // This is used to track if PromCollectors still contains active collectors
 }
 
 // PdhCHandle links a PDH handle to the consecutive number of times it has been collected unsuccessfully
@@ -167,7 +195,7 @@ func (p *PdhCounterSet) StartCollect() error {
 
 	// Initialize basics of prometheus
 	p.PromCollectors = map[string]prometheus.Gauge{}
-	p.PromWaitGroup = sync.WaitGroup{}
+	p.PromWaitGroup = &sync.WaitGroup{}
 
 	// Add a collector to track how many pdh counters fail to collect
 	g := prometheus.GaugeOpts{

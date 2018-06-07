@@ -122,6 +122,16 @@ type (
 	PDH_HCOUNTER HANDLE // counter handle
 )
 
+// PDH_COUNTER_PATH_ELEMENTS contains parsed elements of a counter path
+type PDH_COUNTER_PATH_ELEMENTS struct {
+	MachineName *uint16
+	ObjectName *uint16
+	InstanceName *uint16
+	ParentInstance *uint16
+	InstanceIndex uint32
+	CounterName *uint16
+}
+
 // Union specialization for double values
 type PDH_FMT_COUNTERVALUE_DOUBLE struct {
 	CStatus     uint32
@@ -172,6 +182,7 @@ var (
 	pdh_GetFormattedCounterArrayW *syscall.Proc
 	pdh_OpenQuery                 *syscall.Proc
 	pdh_ValidatePathW             *syscall.Proc
+	pdh_ParseCounterPathW		  *syscall.Proc
 )
 
 func init() {
@@ -187,6 +198,7 @@ func init() {
 	pdh_GetFormattedCounterArrayW = libpdhDll.MustFindProc("PdhGetFormattedCounterArrayW")
 	pdh_OpenQuery = libpdhDll.MustFindProc("PdhOpenQuery")
 	pdh_ValidatePathW = libpdhDll.MustFindProc("PdhValidatePathW")
+	pdh_ParseCounterPathW = libpdhDll.MustFindProc("PdhParseCounterPathW")
 }
 
 // Adds the specified counter to the query. This is the internationalized version. Preferably, use the
@@ -409,6 +421,75 @@ func PdhGetFormattedCounterArrayLong(hCounter PDH_HCOUNTER, lpdwBufferSize *uint
 
 	return uint32(ret)
 }
+
+// PdhParseCounterPath will parse a PDH counter path into its individual elements. You should call this function twice,
+// the first time to get the required buffer size (set szFullPathBuffer to an uninstantiated PDH_COUNTER_PATH_ELEMENTS
+// instance and pdwBufferSize to nil), and the second time to get the data.
+//
+//	szFullPathBuffer: PDH counter path to be parsed. Example: \Processor(_Total)\% Processor Time
+//	pCounterPathElements: Caller-allocated buffer that receives PDH_COUNTER_PATH_ELEMENTS. PDH_COUNTER_PATH_ELEMENTS
+// 		contains pointers to the individual string elements of the path referenced by the szFullPathBuffer parameter.
+//	pdwBufferSize: Size of the pCounterPathElements buffer, in bytes. If zero on input, the function returns
+// 		PDH_MORE_DATA and sets this parameter to the required buffer size.
+//
+//	Example:
+// 		var c win.PDH_COUNTER_PATH_ELEMENTS
+//		var b uint32
+//		if ret := win.PdhParseCounterPath("\Processor(_Total)\% Processor Time", nil, &b); ret == win.PDH_MORE_DATA {
+//			if ret = win.PdhParseCounterPath(counter.Path, &c, &b); ret == win.ERROR_SUCCESS {
+//				fmt.Printf("MachineName: %s\n", win.UTF16PtrToString(c.MachineName))
+//				fmt.Printf("ObjectName: %s\n", win.UTF16PtrToString(c.ObjectName))
+//				fmt.Printf("InstanceName: %s\n", win.UTF16PtrToString(c.InstanceName))
+//				fmt.Printf("CounterName: %s\n", win.UTF16PtrToString(c.CounterName))
+//			} else {
+//				// Failed to parse counter
+//				// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+//			}
+//		} else {
+//			// Failed to obtain buffer info
+//			// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+//		}
+func PdhParseCounterPath(szFullPathBuffer string, pCounterPathElements *PDH_COUNTER_PATH_ELEMENTS, pdwBufferSize *uint32) uint32 {
+	ptxt, _ := syscall.UTF16PtrFromString(szFullPathBuffer)
+
+	ret, _, _ := pdh_ParseCounterPathW.Call(
+		uintptr(unsafe.Pointer(ptxt)),
+		uintptr(unsafe.Pointer(pCounterPathElements)),
+		uintptr(unsafe.Pointer(pdwBufferSize)),
+		0)
+
+	return uint32(ret)
+}
+
+// TODO: MESS WITH THIS
+//func PdhParseCounterPathTwo(szFullPathBuffer string) ([]string,uint32) {
+//	var c PDH_COUNTER_PATH_ELEMENTS
+//	var b uint32
+//	if ret := PdhParseCounterPath(szFullPathBuffer, nil, &b); ret == PDH_MORE_DATA {
+//		if ret = PdhParseCounterPath(counter.Path, &c, &b); ret == ERROR_SUCCESS {
+//			fmt.Printf("MachineName: %s\n", win.UTF16PtrToString(c.MachineName))
+//			fmt.Printf("ObjectName: %s\n", win.UTF16PtrToString(c.ObjectName))
+//			fmt.Printf("InstanceName: %s\n", win.UTF16PtrToString(c.InstanceName))
+//			fmt.Printf("CounterName: %s\n", win.UTF16PtrToString(c.CounterName))
+//		} else {
+//			// Failed to parse counter
+//			// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+//		}
+//	} else {
+//		// Failed to obtain buffer info
+//		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+//	}
+//
+//	s := []string{}
+//	if c != nil {
+//		s = append(s, UTF16PtrToString(c.MachineName))
+//		s = append(s, UTF16PtrToString(c.ObjectName))
+//		s = append(s, UTF16PtrToString(c.InstanceName))
+//		s = append(s, UTF16PtrToString(c.CounterName))
+//	}
+//
+//	return s, uint32(ret)
+//}
 
 // Creates a new query that is used to manage the collection of performance data.
 // szDataSource is a null terminated string that specifies the name of the log file from which to

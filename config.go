@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 )
@@ -11,6 +13,8 @@ import (
 // Config defines a struct to match a configuration yaml file.
 type Config struct {
 	Counters        map[string][]string `yaml:"Counters"`
+	CountersLock	sync.RWMutex
+	CountersSequence int
 	ExcludeCounters map[string][]string `yaml:"ExcludeCounters"`
 	HostNames       []string `yaml:"HostNames"`
 	Interval        int64 `yaml:"Interval"`
@@ -57,4 +61,32 @@ func NewConfig(yamlFile string) (config Config) {
 	}
 
 	return
+}
+
+func (c *Config) WriteTestMap(k string, v []string) {
+	c.CountersLock.Lock()
+	defer c.CountersLock.Unlock()
+	c.Counters[k] = v
+	c.CountersSequence++
+}
+
+type Test struct {
+	Key   string
+	Value []string
+}
+
+func (c *Config) IterateCounters(iteratorChannel chan Test) error {
+	c.CountersLock.RLock()
+	defer c.CountersLock.RUnlock()
+	mySeq := c.CountersSequence
+	for k, v := range c.Counters {
+		c.CountersLock.RUnlock()
+		iteratorChannel <- Test{Key:k, Value:v}
+		c.CountersLock.RLock()
+		if mySeq != c.CountersSequence {
+			//close(iteratorChannel)
+			return fmt.Errorf("concurrent modification %d", c.CountersSequence)
+		}
+	}
+	return nil
 }
