@@ -150,6 +150,7 @@ type PdhHostSet struct {
 type PdhCHandle struct {
 	handle *win.PDH_HCOUNTER
 	collectionFailures int
+	excludeInstances []string
 }
 
 // StopCollect shuts down the collection that was started by StartCollect()
@@ -229,7 +230,7 @@ func (p *PdhHostSet) StartCollect() error {
 				continue
 			}
 
-			p.PdhCHandles[counter.Path] = &PdhCHandle{handle: &ch, excludeInstances: counter.ExcludeInstances}
+			p.PdhCHandles[counter.Path] = &PdhCHandle{handle: &ch}
 		}
 
 		ret = win.PdhCollectQueryData(p.PdhQHandle)
