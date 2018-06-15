@@ -80,56 +80,33 @@ func (p *pdhCounter) parsePdhCounterPathElements(c win.PDH_COUNTER_PATH_ELEMENTS
 	}
 }
 
-// NewPdhCounter will create a new pdhCounter instance with all fields populated if the specified path exists
+// NewPdhCounter will create a new pdhCounter instance with all fields populated if the specified path is valid
 func NewPdhCounter(hostname, path string) (*pdhCounter, error) {
-	//fmt.Printf("NewPdhCounter: \\%s%s\n", hostname, path)
 	if hostname != "" {
 		path = fmt.Sprintf(`\\%s%s`, hostname, path)
 	}
 
-	p := pdhCounter{Path:path}
-	return &p, nil
+	var b uint32
+	if ret := win.PdhParseCounterPath(path, nil, &b); ret == win.PDH_MORE_DATA {
+		buf := make([]byte, b)
+		if ret := win.PdhParseCounterPath(path, &buf[0], &b); ret == win.ERROR_SUCCESS {
+			c := *(*win.PDH_COUNTER_PATH_ELEMENTS)(unsafe.Pointer(&buf[0]))
+			p := pdhCounter{
+				Path: path,
+			}
+			p.parsePdhCounterPathElements(c)
 
-	//s, ret := win.PdhParseCounterPathTwo(path)
-	//if ret != win.ERROR_SUCCESS {
-	//	return nil, errors.New(fmt.Sprintf("error in PdhParseCounterPathTwo -> %x", ret))
-	//}
-	//
-	//p.MachineName = s[0]
-	//p.ObjectName = s[1]
-	//p.InstanceName = s[2]
-	//p.CounterName = s[3]
-	//
-	//return &p, nil
-
-	//var c win.PDH_COUNTER_PATH_ELEMENTS
-	//var b uint32
-	//if ret := win.PdhParseCounterPath(path, nil, &b); ret == win.PDH_MORE_DATA {
-	//	if ret := win.PdhParseCounterPath(path, &c, &b); ret == win.ERROR_SUCCESS {
-			//p := pdhCounter{
-			//	Path: path,
-			//	MachineName: win.UTF16PtrToString(c.MachineName)[2:],
-			//	ObjectName: win.UTF16PtrToString(c.ObjectName),
-			//	InstanceName: win.UTF16PtrToString(c.InstanceName),
-			//	ParentInstance: win.UTF16PtrToString(c.ParentInstance),
-			//	InstanceIndex: c.InstanceIndex,
-			//	CounterName: win.UTF16PtrToString(c.CounterName),
-			//}
-			//fmt.Printf("did stuff\n")
-			//p.parsePdhCounterPathElements(c)
-
-
-	//		return &p, nil
-	//	} else {
-	//		// Failed to parse counter
-	//		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
-	//		return nil, errors.New("failed to create PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
-	//	}
-	//} else {
-	//	// Failed to obtain buffer info
-	//	// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
-	//	return nil, errors.New("failed to obtain buffer info for PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
-	//}
+			return &p, nil
+		} else {
+			// Failed to parse counter
+			// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+			return nil, errors.New("failed to create PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
+		}
+	} else {
+		// Failed to obtain buffer info
+		// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+		return nil, errors.New("failed to obtain buffer info for PdhCounter from " + path + " -> " + fmt.Sprintf("%x", ret))
+	}
 }
 
 // Instance will return the PDH instance contained within the Path of p
@@ -284,6 +261,7 @@ func (p *PdhCounterSet) StartCollect() error {
 									c := filledBuf[i]
 									s := win.UTF16PtrToString(c.SzName)
 
+									// TODO: figure out how to exclude s from being reported if it exists in the defined ExcludeCounters
 									if val, ok := p.PromCollectors[k+s]; ok {
 										val.Set(c.FmtValue.DoubleValue)
 										v.collectionFailures = 0
@@ -471,7 +449,7 @@ func counterToPrometheusGauge(hostname, counter, instance string) (prometheus.Ga
 		category = fields[catIndex]
 	}
 
-	// Replace known runes that occur in winpdh
+	// Replace known runes that occur in winpdh that aren't recommended in prometheus
 	r := strings.NewReplacer(
 		".", "_",
 		"-", "_",
@@ -491,10 +469,15 @@ func counterToPrometheusGauge(hostname, counter, instance string) (prometheus.Ga
 	category = string(reg.ReplaceAll([]byte(category),[]byte("")))
 	instance = string(reg.ReplaceAll([]byte(instance),[]byte("")))
 
+	l := prometheus.Labels{"hostname": hostname, "pdhcategory": category}
+	if instance != "" {
+		l["pdhinstance"] = instance
+	}
+
 	return prometheus.GaugeOpts{
-		ConstLabels: prometheus.Labels{"hostname": hostname, "pdhcategory": category, "pdhinstance": instance},
-		Help: "windows performance counter",
-		Name: string(reg.ReplaceAll([]byte(counterName),[]byte(""))),
-		Namespace:"winpdh",
+		ConstLabels: l,
+		Help:        "windows performance counter",
+		Name:        string(reg.ReplaceAll([]byte(counterName), []byte(""))),
+		Namespace:   "winpdh",
 	}, nil
 }

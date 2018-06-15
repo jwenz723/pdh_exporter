@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"log"
 	"strings"
@@ -12,12 +11,12 @@ import (
 
 // Config defines a struct to match a configuration yaml file.
 type Config struct {
-	Counters        map[string][]string `yaml:"Counters"`
-	CountersLock	sync.RWMutex
-	CountersSequence int
-	ExcludeCounters map[string][]string `yaml:"ExcludeCounters"`
-	HostNames       []string `yaml:"HostNames"`
-	Interval        int64 `yaml:"Interval"`
+	Counters        	map[string][]string `yaml:"Counters"`
+	CountersLock		sync.RWMutex
+	CountersSequence 	int
+	ExcludeCounters		map[string][]string `yaml:"ExcludeCounters"`
+	HostNames       	[]string `yaml:"HostNames"`
+	Interval        	int64 `yaml:"Interval"`
 }
 
 // UnmarshalYAML overrides what happens when the yaml.Unmarshal function is executed on the Config type
@@ -27,23 +26,23 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	// Force all keys in c.Counters to be uppercase
+	// Force all keys in c.Counters to be lowercase
 	t := map[string][]string{}
 	for k, v := range c.Counters {
-		t[strings.ToUpper(k)] = v
+		t[strings.ToLower(k)] = v
 	}
 	c.Counters = t
 
-	// Force all keys in c.ExcludeCounters to be uppercase
+	// Force all keys in c.ExcludeCounters to be lowercase
 	e := map[string][]string{}
 	for k, v := range c.ExcludeCounters {
-		e[strings.ToUpper(k)] = v
+		e[strings.ToLower(k)] = v
 	}
 	c.ExcludeCounters = e
 
-	// Force all values in c.HostNames to be uppercase
+	// Force all values in c.HostNames to be lowercase
 	for i, h := range c.HostNames {
-		c.HostNames[i] = strings.ToUpper(h)
+		c.HostNames[i] = strings.ToLower(h)
 	}
 	return nil
 }
@@ -61,32 +60,4 @@ func NewConfig(yamlFile string) (config Config) {
 	}
 
 	return
-}
-
-func (c *Config) WriteTestMap(k string, v []string) {
-	c.CountersLock.Lock()
-	defer c.CountersLock.Unlock()
-	c.Counters[k] = v
-	c.CountersSequence++
-}
-
-type Test struct {
-	Key   string
-	Value []string
-}
-
-func (c *Config) IterateCounters(iteratorChannel chan Test) error {
-	c.CountersLock.RLock()
-	defer c.CountersLock.RUnlock()
-	mySeq := c.CountersSequence
-	for k, v := range c.Counters {
-		c.CountersLock.RUnlock()
-		iteratorChannel <- Test{Key:k, Value:v}
-		c.CountersLock.RLock()
-		if mySeq != c.CountersSequence {
-			//close(iteratorChannel)
-			return fmt.Errorf("concurrent modification %d", c.CountersSequence)
-		}
-	}
-	return nil
 }
