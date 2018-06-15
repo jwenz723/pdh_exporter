@@ -28,8 +28,8 @@ var (
 	JSONOutput = flag.Bool("JSONOutput", false, "Use this flag to turn on json formatted logging.")
 	svcFlag = flag.String("service", "", "Control the system service. Valid actions: start, stop, restart, install, uninstall")
 
-	// A map containing a reference to all PdhCounterSet that are being collected
-	PCSCollectedSets = map[string]*PdhCounter.PdhCounterSet{}
+	// A map containing a reference to all PdhHostSet that are being collected
+	PCSCollectedSets = map[string]*PdhCounter.PdhHostSet{}
 
 	// PCSCollectedSetsMux is used to insure safe writing to PCSCollectedSets
 	PCSCollectedSetsMux = &sync.Mutex{}
@@ -250,14 +250,14 @@ func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan e
 	}
 }
 
-// ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet that are new to addPCSChan
+// ReadConfigFile will parse the Yaml formatted file and pass along all PdhHostSet that are new to addPCSChan
 func ReadConfigFile(file string) {
 	log.WithFields(log.Fields{
 		"host": hostName,
 		"config": file,
 	}).Debug("Reading config file")
 
-	newPCSCollectedSets := map[string]*PdhCounter.PdhCounterSet{}
+	newPCSCollectedSets := map[string]*PdhCounter.PdhHostSet{}
 	config := NewConfig(file)
 
 	for _, h := range config.HostNames {
@@ -270,7 +270,7 @@ func ReadConfigFile(file string) {
 		if _, ok := newPCSCollectedSets[h]; !ok {
 			log.WithField("host", "h").Debug("Determining counters for host")
 
-			pcs := &PdhCounter.PdhCounterSet{
+			hostSet := &PdhCounter.PdhHostSet{
 				Done:        make(chan struct{}),
 				Host:        h,
 				Interval:    time.Duration(config.Interval) * time.Second,
@@ -301,7 +301,7 @@ func ReadConfigFile(file string) {
 							continue counterloop
 						}
 
-						// if counterPath has an exact match in exCounters then don't add it to pcs
+						// if counterPath has an exact match in exCounters then don't add it to hostSet
 						if _, ok := exCounters[counterPath]; !ok {
 							for exK := range exCounters {
 								if exP, err := PdhCounter.NewPdhCounter(h, exK); err != nil {
@@ -314,21 +314,21 @@ func ReadConfigFile(file string) {
 									continue counterloop
 								}
 							}
-							pcs.Counters = append(pcs.Counters, p)
+							hostSet.Counters = append(hostSet.Counters, p)
 						}
 					}
 				}
 			}
 
 			log.WithFields(log.Fields{
-				"counterCount": len(pcs.Counters),
-				"host": pcs.Host,
+				"counterCount": len(hostSet.Counters),
+				"host":         hostSet.Host,
 			}).Debug("Finished determining counters for host")
-			newPCSCollectedSets[h] = pcs
+			newPCSCollectedSets[h] = hostSet
 		}
 	}
 
-	// Figure out if any PdhCounterSet have been removed completely from collection
+	// Figure out if any PdhHostSet have been removed completely from collection
 	for hostName, cSet := range PCSCollectedSets {
 		if _, ok := newPCSCollectedSets[hostName]; !ok {
 			// stop the old collection set
@@ -336,7 +336,7 @@ func ReadConfigFile(file string) {
 		}
 	}
 
-	// Figure out if any PdhCounterSet have been added or changed
+	// Figure out if any PdhHostSet have been added or changed
 	for hostName, cSet := range newPCSCollectedSets {
 		newSet := true
 
@@ -355,7 +355,7 @@ func ReadConfigFile(file string) {
 		}
 
 		if len(cSet.Counters) > 0 && newSet {
-			go func(cSet *PdhCounter.PdhCounterSet) {
+			go func(cSet *PdhCounter.PdhHostSet) {
 				PCSCollectedSetsMux.Lock()
 				PCSCollectedSets[cSet.Host] = cSet
 				PCSCollectedSetsMux.Unlock()
@@ -375,7 +375,7 @@ func ReadConfigFile(file string) {
 				}).Info("finished StartCollect()\n")
 			}(cSet)
 
-			log.Debugf("%s: sent new PdhCounterSet\n", hostName)
+			log.Debugf("%s: sent new PdhHostSet\n", hostName)
 		}
 	}
 }

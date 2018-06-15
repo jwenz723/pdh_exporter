@@ -132,8 +132,8 @@ func NewPdhCounter(hostname, path string) (*pdhCounter, error) {
 //	}
 //}
 
-// PdhCounterSet defines a PdhCounter set to be collected on a single Host
-type PdhCounterSet struct {
+// PdhHostSet defines a PdhCounter set to be collected on a single Host
+type PdhHostSet struct {
 	completedInitialization 	bool // Indicates that the first iteration of StartCollect() has executed completely
 	Counters 					[]*pdhCounter // Contains all PdhCounter's to be collected
 	Done 	 					chan struct{} // When this channel is closed, the collected Counters are unregistered from Prometheus and collection is stopped
@@ -154,7 +154,7 @@ type PdhCHandle struct {
 
 // StopCollect shuts down the collection that was started by StartCollect()
 // and waits for all prometheus collectors to be unregistered.
-func (p *PdhCounterSet) StopCollect() {
+func (p *PdhHostSet) StopCollect() {
 	// stop the old collection set
 	close(p.Done)
 
@@ -163,7 +163,7 @@ func (p *PdhCounterSet) StopCollect() {
 }
 
 // StartCollect will start the collection for the defined Host and Counters in p
-func (p *PdhCounterSet) StartCollect() error {
+func (p *PdhHostSet) StartCollect() error {
 	defer p.UnregisterPrometheusCollectors()
 
 	log.WithFields(log.Fields{
@@ -198,11 +198,6 @@ func (p *PdhCounterSet) StartCollect() error {
 		}).Error("failed PdhOpenQuery")
 	} else {
 		for _, counter := range p.Counters {
-			if !p.IsLocalhost {
-				// TODO: should hostname be appended elsewhere?
-				counter.Path = fmt.Sprintf("\\\\%s%s", p.Host, counter.Path)
-			}
-
 			var ch win.PDH_HCOUNTER
 			ret = win.PdhValidatePath(counter.Path)
 			if ret == win.PDH_CSTATUS_BAD_COUNTERNAME {
@@ -234,7 +229,7 @@ func (p *PdhCounterSet) StartCollect() error {
 				continue
 			}
 
-			p.PdhCHandles[counter.Path] = &PdhCHandle{handle: &ch}
+			p.PdhCHandles[counter.Path] = &PdhCHandle{handle: &ch, excludeInstances: counter.ExcludeInstances}
 		}
 
 		ret = win.PdhCollectQueryData(p.PdhQHandle)
@@ -348,7 +343,7 @@ func (p *PdhCounterSet) StartCollect() error {
 }
 
 // AddPrometheusCollector adds a new gauge into PromCollectors and updates the number in PromWaitGroup
-func (p *PdhCounterSet) AddPrometheusCollector(key string, g prometheus.GaugeOpts) error {
+func (p *PdhHostSet) AddPrometheusCollector(key string, g prometheus.GaugeOpts) error {
 	p.PromCollectors[key] = prometheus.NewGauge(g)
 	if err := prometheus.Register(p.PromCollectors[key]); err != nil {
 		return err
@@ -359,7 +354,7 @@ func (p *PdhCounterSet) AddPrometheusCollector(key string, g prometheus.GaugeOpt
 }
 
 // UnregisterPrometheusCollectors unregisters all prometheus collector instances in use by p
-func (p *PdhCounterSet) UnregisterPrometheusCollectors() {
+func (p *PdhHostSet) UnregisterPrometheusCollectors() {
 	for k, v := range p.PromCollectors {
 		if b := prometheus.Unregister(v); !b {
 			log.WithFields(log.Fields{
@@ -378,7 +373,7 @@ func (p *PdhCounterSet) UnregisterPrometheusCollectors() {
 }
 
 // TestEquivalence will test if a is equivalent to p
-func (p *PdhCounterSet) TestEquivalence(a *PdhCounterSet) bool {
+func (p *PdhHostSet) TestEquivalence(a *PdhHostSet) bool {
 	if p.Host != a.Host || p.Interval != a.Interval || len(p.Counters) != len(a.Counters) {
 		return false
 	}
@@ -393,7 +388,7 @@ func (p *PdhCounterSet) TestEquivalence(a *PdhCounterSet) bool {
 }
 
 // handleCollectionFailure is used to calculate when a counter should be deemed as non-collectible.
-func (p *PdhCounterSet) handleCollectionFailure(counter string, cHandle *PdhCHandle, ret uint32) {
+func (p *PdhHostSet) handleCollectionFailure(counter string, cHandle *PdhCHandle, ret uint32) {
 	cHandle.collectionFailures++
 
 	if cHandle.collectionFailures == 10 {
