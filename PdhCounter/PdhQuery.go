@@ -1,3 +1,4 @@
+// +build windows
 package PdhCounter
 
 import (
@@ -8,7 +9,7 @@ import (
 
 	"github.com/jwenz723/win"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 const FAILED_COLLECTION_ATTEMPTS = 10 // The number of times a collector can fail before it is unregistered from prometheus
@@ -24,7 +25,6 @@ func (e PdhError) Error() string {
 
 // pdhQuery defines a pdhCounter set to be collected on a single Host
 type pdhQuery struct {
-	completedInitialization bool            // Indicates that the first iteration of Start() has executed completely
 	counters                []*pdhCounter   // Contains all pdhCounter's to be collected
 	Done                    chan struct{}   // When this channel is closed, the collected counters are unregistered from Prometheus and collection is stopped
 	Host                    string          // Defines the host to collect counters from
@@ -33,6 +33,7 @@ type pdhQuery struct {
 	PdhQHandle              win.PDH_HQUERY  // A handle to the PDH Query used for collecting counters
 	PromWaitGroup           *sync.WaitGroup // This is used to track if PromCollectors still contains active collectors. This prevents the same collector from being registered with prometheus more than once when a pdhQuery is updated.
 	failedCollector         prometheus.Gauge
+	logger					*logrus.Logger	// a logger to which all log messages will be written to
 }
 
 // AddCounter adds a counter into pdhQuery
@@ -50,14 +51,11 @@ func (p *pdhQuery) NumCounters() int {
 func (p *pdhQuery) Start() error {
 	defer func() {
 		p.unregisterPromCollectors()
-		log.WithFields(log.Fields{
-			"host": p.Host,
-		}).Debug("exiting Start()")
 	}()
 
-	log.WithFields(log.Fields{
+	p.logger.WithFields(logrus.Fields{
 		"host": p.Host,
-	}).Debug("beginning Start()")
+	}).Info("starting pdhQuery")
 
 	// Add a collector to track how many pdh counters fail to collect
 	p.failedCollector = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -67,7 +65,7 @@ func (p *pdhQuery) Start() error {
 		Namespace:"winpdh",
 	})
 	if err := prometheus.Register(p.failedCollector); err != nil {
-		log.WithFields(log.Fields{
+		p.logger.WithFields(logrus.Fields{
 			"host": p.Host,
 		}).Errorf("failed to add 'FailedCollectors' prometheus collector -> %s", err)
 		return err
@@ -80,11 +78,14 @@ func (p *pdhQuery) Start() error {
 		return PdhError{ret, "failed PdhOpenQuery"}
 	} else {
 		for i := len(p.counters)-1; i >= 0; i-- {
-			fmt.Println(p.counters[i].Path.String())
+			p.logger.WithFields(logrus.Fields{
+				"counter": p.counters[i].Path.String(),
+				"host": p.Host,
+			}).Debug("initializing pdhCounter")
 			var ch win.PDH_HCOUNTER
 			ret = win.PdhValidatePath(p.counters[i].Path.String())
 			if ret != win.ERROR_SUCCESS {
-				log.WithFields(log.Fields{
+				p.logger.WithFields(logrus.Fields{
 					"host": p.Host,
 					"counter": p.counters[i].Path,
 					"PDHError": fmt.Sprintf("%x",ret),
@@ -97,13 +98,13 @@ func (p *pdhQuery) Start() error {
 			ret = win.PdhAddEnglishCounter(p.PdhQHandle, p.counters[i].Path.String(), 0, &ch)
 			if ret != win.ERROR_SUCCESS {
 				if ret != win.PDH_CSTATUS_NO_OBJECT {
-					log.WithFields(log.Fields{
+					p.logger.WithFields(logrus.Fields{
 						"counter": p.counters[i].Path,
 						"host": p.Host,
 						"PDHError": fmt.Sprintf("%x",ret),
 					}).Error("failed PdhAddEnglishCounter")
 				} else {
-					log.WithFields(log.Fields{
+					p.logger.WithFields(logrus.Fields{
 						"counter": p.counters[i].Path,
 						"host": p.Host,
 						"PDHError": fmt.Sprintf("%x",ret),
@@ -156,14 +157,14 @@ func (p *pdhQuery) Start() error {
 										if g, err := v.counterToPrometheusGauge(s); err == nil {
 											if err := v.registerPromCollector(s, g); err != nil {
 												if e, ok := err.(prometheus.AlreadyRegisteredError); ok {
-													log.WithFields(log.Fields{
+													p.logger.WithFields(logrus.Fields{
 														"counter": v.Path.String(),
 														"PDHInstance": s,
 														"host": p.Host,
 														"error": e,
 													}).Warnf("Collector already registered with prometheus")
 												} else {
-													log.WithFields(log.Fields{
+													p.logger.WithFields(logrus.Fields{
 														"counter": v.Path.String(),
 														"PDHInstance": s,
 														"host": p.Host,
@@ -173,14 +174,14 @@ func (p *pdhQuery) Start() error {
 													return err
 												}
 											} else {
-												log.WithFields(log.Fields{
+												p.logger.WithFields(logrus.Fields{
 													"counter": v.Path.String(),
 													"PDHInstance": s,
 													"host": p.Host,
 												}).Debug("Collector registered with prometheus")
 											}
 										} else {
-											log.WithFields(log.Fields{
+											p.logger.WithFields(logrus.Fields{
 												"counter": v.Path.String(),
 												"host": p.Host,
 												"error": err,
@@ -190,7 +191,7 @@ func (p *pdhQuery) Start() error {
 								}
 							} else {
 								if v.collectionFailures < FAILED_COLLECTION_ATTEMPTS {
-									log.WithFields(log.Fields{
+									p.logger.WithFields(logrus.Fields{
 										"counter":  v.Path.String(),
 										"host":     p.Host,
 										"PDHError": fmt.Sprintf("%x", ret),
@@ -204,7 +205,7 @@ func (p *pdhQuery) Start() error {
 										// stop reporting counter to prometheus
 										p.counters[i].unregisterPromCollectors()
 
-										log.WithFields(log.Fields{
+										p.logger.WithFields(logrus.Fields{
 											"counter":  v.Path.String(),
 											"host":     p.Host,
 											"PDHError": fmt.Sprintf("%x", ret),
@@ -214,7 +215,7 @@ func (p *pdhQuery) Start() error {
 							}
 						} else {
 							if v.collectionFailures < FAILED_COLLECTION_ATTEMPTS {
-								log.WithFields(log.Fields{
+								p.logger.WithFields(logrus.Fields{
 									"counter": v.Path.String(),
 									"host":    p.Host,
 								}).Warn("No data exists for counter.")
@@ -227,7 +228,7 @@ func (p *pdhQuery) Start() error {
 									// stop reporting counter to prometheus
 									p.counters[i].unregisterPromCollectors()
 
-									log.WithFields(log.Fields{
+									p.logger.WithFields(logrus.Fields{
 										"counter":  v.Path.String(),
 										"host":     p.Host,
 										"PDHError": fmt.Sprintf("%x", ret),
@@ -238,20 +239,9 @@ func (p *pdhQuery) Start() error {
 					}
 				}
 
-				if !p.completedInitialization {
-					p.completedInitialization = true
-					log.WithFields(log.Fields{
-						"host": p.Host,
-					}).Info("completed Start() initialization")
-				} else {
-					log.WithFields(log.Fields{
-						"host": p.Host,
-					}).Debug("completed Start() iteration")
-				}
-
 				select{
 				case <- p.Done:
-					log.WithFields(log.Fields{
+					p.logger.WithFields(logrus.Fields{
 						"host": p.Host,
 					}).Info("instance Done channel was closed")
 					break loop // must specify name of loop or else it will just break out of select{}
@@ -268,6 +258,10 @@ func (p *pdhQuery) Start() error {
 // Stop shuts down the collection that was started by Start()
 // and waits for all prometheus collectors to be unregistered.
 func (p *pdhQuery) Stop() {
+	p.logger.WithFields(logrus.Fields{
+		"host": p.Host,
+	}).Info("stopping pdhQuery")
+
 	// stop the old collection set
 	close(p.Done)
 
@@ -301,7 +295,7 @@ func (p *pdhQuery) TestEquivalence(a *pdhQuery) bool {
 }
 
 // NewPdhQuery creates a new pdhQuery
-func NewPdhQuery(host string, interval time.Duration, isLocalHost bool) (*pdhQuery, error) {
+func NewPdhQuery(host string, interval time.Duration, isLocalHost bool, logger *logrus.Logger) *pdhQuery {
 	p := pdhQuery{
 		Done:          make(chan struct{}),
 		Host:          host,
@@ -309,7 +303,8 @@ func NewPdhQuery(host string, interval time.Duration, isLocalHost bool) (*pdhQue
 		IsLocalhost:   isLocalHost,
 		counters:      []*pdhCounter{},
 		PromWaitGroup: &sync.WaitGroup{},
+		logger:		   logger,
 	}
 
-	return &p, nil
+	return &p
 }

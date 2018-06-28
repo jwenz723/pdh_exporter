@@ -2,11 +2,11 @@ package main
 
 import (
 	"io/ioutil"
-	"log"
 	"strings"
 	"sync"
 
 	"github.com/jwenz723/pdhexport/PdhCounter"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 )
 
@@ -49,7 +49,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // NewConfig will create a new Config instance from the specified yaml file
-func NewConfig(yamlFile string) (config Config) {
+func NewConfig(yamlFile string, log *logrus.Logger) (config Config) {
 	source, readFileErr := ioutil.ReadFile(yamlFile)
 	if readFileErr != nil {
 		log.Fatal(readFileErr)

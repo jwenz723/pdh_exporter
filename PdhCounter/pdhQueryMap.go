@@ -1,8 +1,11 @@
+// +build windows
 package PdhCounter
 
 import (
 	"fmt"
 	"sync"
+
+	"github.com/sirupsen/logrus"
 )
 
 type QueryError struct {
@@ -17,30 +20,37 @@ func (e QueryError) Error() string {
 // pdhQueryMap is a concurrency-safe map of hosts and their pdhQueries.
 type pdhQueryMap struct {
 	sync.RWMutex
-	m map[string]*pdhQuery
-	NewQueryChan chan QueryResult
-	DeadQueryChan chan QueryResult
-	ErrorsChan chan QueryError
+	CancelChan				chan struct{} // a channel that when closed will signal to pdhQueryMap to stop collection
+	logger					*logrus.Logger	// a logger to which all log messages will be written to
+	m 						map[string]*pdhQuery
+	NewQueryChan 			chan QueryResult
 }
 
 // NewClientMap will create a new pdhQueryMap
-func NewPdhQueryMap() pdhQueryMap {
-	qCh := make(chan QueryResult)
-	dCh := make(chan QueryResult)
-	eCh := make(chan QueryError)
+func NewPdhQueryMap(logger *logrus.Logger) *pdhQueryMap {
 	p := pdhQueryMap{
+		CancelChan: make(chan struct{}),
+		logger:logger,
 		m: make(map[string]*pdhQuery),
-		NewQueryChan: qCh,
-		DeadQueryChan: dCh,
-		ErrorsChan: eCh,
+		NewQueryChan: make(chan QueryResult),
 	}
 
-	go func() {
-		for result := range qCh {
+	return &p
+}
+
+func (p *pdhQueryMap) Listen() error {
+	for {
+		select {
+		case <-p.CancelChan:
+			test := 2
+			fmt.Println("shutting down pdhQueryMap", test)
+			p.logger.Info("shutting down pdhQueryMap")
+			return nil
+		case result := <-p.NewQueryChan:
 			go func(result QueryResult) {
 				defer func() {
 					p.Delete(result.Host)
-					p.DeadQueryChan <- result
+					p.logger.WithField("host", result.Host).Info("query collection stopped")
 				}()
 
 				// Check if an equivalent query already exists for this host
@@ -57,15 +67,12 @@ func NewPdhQueryMap() pdhQueryMap {
 					p.Add(result.Host, result.Query)
 
 					if err := result.Query.Start(); err != nil {
-						fmt.Println(err)
-						p.ErrorsChan <- QueryError{result.Host, err}
+						p.logger.Error(QueryError{result.Host, err})
 					}
 				}
 			}(result)
 		}
-	}()
-
-	return p
+	}
 }
 
 // Length will return the number of keys within c.m
@@ -102,6 +109,7 @@ type QueryResult struct{
 	Host string
 	Query *pdhQuery
 }
+
 // IterateMap will send each key/value QueryResult contained in c.m to a returned channel
 func (c *pdhQueryMap) IterateMap() <-chan QueryResult {
 	i := make(chan QueryResult)

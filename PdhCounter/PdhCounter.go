@@ -1,3 +1,4 @@
+// +build windows
 package PdhCounter
 
 import (
@@ -10,7 +11,7 @@ import (
 
 	"github.com/jwenz723/win"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // PdhPath is a string representing a PDH path.
@@ -31,16 +32,17 @@ func (p *PdhPath) AppendHostname (hostname string) {
 // pdhCounter is a single PDH counter (with a possible * instance) and all registered
 // prometheus collectors (1 per PDH instance) that report values for the single PDH counter
 type pdhCounter struct{
-	Path             		PdhPath `yaml:"PdhPath"` // The path to the PDH counter to be collected
+	collectionFailures 		int
+	CounterName      		string
 	ExcludeInstances 		[]string              // A list of PDH instances to be excluded from collection
+	handle 			 		*win.PDH_HCOUNTER
+	InstanceIndex    		uint32
+	InstanceName     		string
+	logger					*logrus.Logger	// a logger to which all log messages will be written to
 	MachineName      		string
 	ObjectName       		string
-	InstanceName     		string
 	ParentInstance   		string
-	InstanceIndex    		uint32
-	CounterName      		string
-	handle 			 		*win.PDH_HCOUNTER
-	collectionFailures 		int
+	Path             		PdhPath `yaml:"PdhPath"` // The path to the PDH counter to be collected
 	promCollectors	 		map[string]*prometheus.Gauge
 	promCollectorsLock 		*sync.RWMutex
 }
@@ -118,12 +120,12 @@ func (c *pdhCounter) registerPromCollector(instance string, g *prometheus.GaugeO
 func (c *pdhCounter) unregisterPromCollectors() {
 	for k, v := range c.promCollectors {
 		if b := prometheus.Unregister(*v); !b {
-			log.WithFields(log.Fields{
+			c.logger.WithFields(logrus.Fields{
 				"collector": k,
 			}).Error("failed to unregister Prometheus Collector\n")
 		} else {
 			delete(c.promCollectors, k)
-			log.WithFields(log.Fields{
+			c.logger.WithFields(logrus.Fields{
 				"collector": k,
 			}).Debug("unregistered Prometheus Collector")
 		}
@@ -175,9 +177,9 @@ func (c *pdhCounter) counterToPrometheusGauge(instance string) (*prometheus.Gaug
 }
 
 // NewPdhCounter will create a new pdhCounter instance with all fields populated if the specified path is valid
-func NewPdhCounter(hostname string, path PdhPath) (*pdhCounter, error) {
+func NewPdhCounter(hostname string, path PdhPath, logger *logrus.Logger) (*pdhCounter, error) {
 	if hostname != "" {
-		path.AppendHostname(hostname)// fmt.Sprintf(`\\%s%s`, hostname, path.String())
+		path.AppendHostname(hostname)
 	}
 
 	var b uint32
@@ -190,6 +192,7 @@ func NewPdhCounter(hostname string, path PdhPath) (*pdhCounter, error) {
 				Path: path,
 				promCollectors: map[string]*prometheus.Gauge{},
 				promCollectorsLock: &sync.RWMutex{},
+				logger:logger,
 			}
 			p.parsePdhCounterPathElements(c)
 
