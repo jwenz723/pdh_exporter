@@ -45,7 +45,7 @@ type program struct {
 
 // Start is called when the service is started
 func (p *program) Start(s service.Service) error {
-	logger.Info("starting...")
+	logger.Info("starting program...")
 
 	// Start should not block. Do the actual work async.
 	go func() {
@@ -60,7 +60,7 @@ func (p *program) Start(s service.Service) error {
 // Stop is called when the service is stopped
 func (p *program) Stop(s service.Service) error {
 	// Any work in Stop should be quick, usually a few seconds at most.
-	logger.Info("stopping...")
+	logger.Info("stopping program...")
 	close(p.exit)
 	return nil
 }
@@ -156,14 +156,12 @@ func main() {
 	}
 
 	// setup logging to file
-	l, close, err := InitLogging(*logDirectory, *logLevel, *JSONOutput)
+	l, teardown, err := InitLogging(*logDirectory, *logLevel, *JSONOutput)
 	if err != nil {
 		logger.Fatalf("error initializing logger file -> %v\n", err)
 	}
 	defer func() {
-		test := 2
-		fmt.Println("closing log",test)
-		close()
+		teardown()
 	}()
 	logger = l
 
@@ -199,7 +197,7 @@ func main() {
 
 // InitLogging is used to initialize all properties of the logrus
 // logging library.
-func InitLogging(logDirectory string, logLevel string, jsonOutput bool) (logger *logrus.Logger, close func(), err error) {
+func InitLogging(logDirectory string, logLevel string, jsonOutput bool) (logger *logrus.Logger, teardown func(), err error) {
 	logger = logrus.New()
 	var file *os.File
 
@@ -249,13 +247,13 @@ func InitLogging(logDirectory string, logLevel string, jsonOutput bool) (logger 
 		logger.SetLevel(l)
 	}
 
-	close = func() {
+	teardown = func() {
 		if err = file.Close(); err != nil {
 			logger.Errorf("error closing logger file -> %v\n", err)
 		}
 	}
 
-	return logger, close, nil
+	return logger, teardown, nil
 }
 
 // watchFile watches the file located at filePath for changes and sends a message through
@@ -306,7 +304,7 @@ func ReadConfigFile(file string) error {
 
 		// if the hostname has not already been processed
 		if newPdhQueries.GetQuery(h) == nil {
-			logger.WithField("host", "h").Debug("Determining counters for host")
+			logger.WithField("host", h).Debug("Determining counters for host")
 
 			i := time.Duration(config.Interval) * time.Second
 			query := PdhCounter.NewPdhQuery(h, i, lh, logger)
@@ -385,7 +383,7 @@ func ReadConfigFile(file string) error {
 	for result := range newPdhQueries.IterateMap() {
 		logger.WithFields(logrus.Fields{
 			"host": result.Host,
-		}).Info("sending new query\n")
+		}).Info("sending new query")
 		PdhQueries.NewQueryChan <- result
 	}
 
