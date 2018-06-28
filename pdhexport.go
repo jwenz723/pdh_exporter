@@ -1,41 +1,42 @@
+// +build windows
 package main
 
 import (
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/jwenz723/pdhexport/PdhCounter"
 	"github.com/kardianos/service"
+	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var (
 	addr = flag.String("listen-address", ":8080", "The address to listen on for HTTP requests.")
 	config = flag.String("config", "config.yml", "Fully qualified path to yml formatted config file.")
-	logDirectory = flag.String("logDirectory", "logs", "Specify a directory where logs should be written to. Use \"\" to log to stdout.")
+	logDirectory = flag.String("logDirectory", "logs", "Specify a directory where logs should be written to. Use \"\" to logger to stdout.")
 	logLevel = flag.String("logLevel", "info", "Use this flag to specify what level of logging you wish to have output. Available values: panic, fatal, error, warn, info, debug.")
 	JSONOutput = flag.Bool("JSONOutput", false, "Use this flag to turn on json formatted logging.")
 	svcFlag = flag.String("service", "", "Control the system service. Valid actions: start, stop, restart, install, uninstall")
 
-	// A map containing a reference to all PdhCounterSet that are being collected
-	PCSCollectedSets = map[string]*PdhCounterSet{}
-
-	// PCSCollectedSetsMux is used to insure safe writing to PCSCollectedSets
-	PCSCollectedSetsMux = &sync.Mutex{}
-
-	// logs to Windows event log
-	logger service.Logger
+	// A map containing a reference to all pdhQuery that are being collected
+	PdhQueries = PdhCounter.NewPdhQueryMap(nil)
 
 	// contains the running directory of the application
 	runningDir string
+
+	// contains the name of the host running the application
+	hostName string
+	logger   *logrus.Logger
 )
 
 type program struct {
@@ -44,23 +45,7 @@ type program struct {
 
 // Start is called when the service is started
 func (p *program) Start(s service.Service) error {
-	logger.Info("Starting...")
-
-	// If running under terminal
-	if service.Interactive() {
-		r, err := os.Getwd()
-		if err != nil {
-			log.Fatal(err)
-		}
-		runningDir = r
-	} else { // else running under service manager
-		r, err := filepath.Abs(filepath.Dir(os.Args[0]))
-		if err != nil {
-			log.Fatal(err)
-		}
-		runningDir = r
-	}
-	p.exit = make(chan struct{})
+	logger.Info("starting program...")
 
 	// Start should not block. Do the actual work async.
 	go func() {
@@ -75,55 +60,77 @@ func (p *program) Start(s service.Service) error {
 // Stop is called when the service is stopped
 func (p *program) Stop(s service.Service) error {
 	// Any work in Stop should be quick, usually a few seconds at most.
-	logger.Info("Shutting down...")
+	logger.Info("stopping program...")
 	close(p.exit)
 	return nil
 }
 
 // Contains all code for starting the application
 func (p *program) run() error {
-	// TODO: find a better way to handle a consistent logs directory across different start methods (service or terminal)
-	if *logDirectory == "logs" {
-		*logDirectory = filepath.Join(runningDir, *logDirectory)
-	}
+	cancelChan := make(chan struct{})
 
-	// Setup log path to log messages out to
-	if l, err := InitLogging(*logDirectory, *logLevel, *JSONOutput); err != nil {
-		log.Fatalf("error initializing log file -> %v\n", err)
+	if h, err := os.Hostname(); err == nil {
+		hostName = strings.ToLower(h)
 	} else {
-		defer func() {
-			if err = l.Close(); err != nil {
-				log.Fatalf("error closing log file -> %v\n", err)
-			}
-		}()
+		return err
 	}
 
-	configChan := make(chan struct{})
-	errorsChan := make(chan error)
-
-	// TODO: find a better way to handle a consistent config path across different start methods (service or terminal)
-	if *config == "config.yml" {
-		*config = filepath.Join(runningDir, *config)
+	var g run.Group
+	{
+		// Expose the registered prometheus metrics via HTTP.
+		ln, _ := net.Listen("tcp", *addr)
+		g.Add(
+			func() error {
+				http.Handle("/metrics", promhttp.Handler())
+				return http.Serve(ln, nil)
+			},
+			func(err error) {
+				ln.Close()
+			},
+		)
 	}
-	go watchFile(*config, configChan, errorsChan)
+	{
+		g.Add(
+			func() error {
+				PdhQueries = PdhCounter.NewPdhQueryMap(logger)
+				return PdhQueries.Listen()
+			},
+			func(err error) {
+				close(PdhQueries.CancelChan)
+			},
+		)
+	}
+	{
+		// Config file watcher
+		g.Add(
+			func() error {
+				if *config == "config.yml" {
+					*config = filepath.Join(runningDir, *config)
+				}
 
-	go func() {
-		for {
-			select {
-			case <- configChan:
-				log.Infof("%s changed\n", *config)
-				go ReadConfigFile(*config)
-			case err := <-errorsChan:
-				log.Fatalf("error occurred while watching %s -> %s\n", *config, err)
-			}
-
-			time.Sleep(5 * time.Second)
-		}
-	}()
-
-	// Expose the registered metrics via HTTP.
-	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(*addr, nil))
+				return watchFile(*config, ReadConfigFile, cancelChan)
+			},
+			func(err error) {
+				close(cancelChan)
+			},
+		)
+	}
+	//{
+	//	// test error creator
+	//	g.Add(
+	//		func() error {
+	//			time.Sleep(10 * time.Second)
+	//
+	//			return fmt.Errorf("test error")
+	//		},
+	//		func(err error) {
+	//			// do nothing
+	//		},
+	//	)
+	//}
+	if err := g.Run(); err != nil {
+		logger.Fatal(err)
+	}
 
 	return nil
 }
@@ -131,195 +138,254 @@ func (p *program) run() error {
 func main() {
 	flag.Parse()
 
-	svcConfig := &service.Config{
+	// determine the runningDir (absolute path) of pdhexport.exe whether it is ran from CLI or service manager
+	if service.Interactive() {
+		// running in CLI
+		r, err := os.Getwd()
+		if err != nil {
+			logger.Fatal(err)
+		}
+		runningDir = r
+	} else {
+		// running under service manager
+		r, err := filepath.Abs(filepath.Dir(os.Args[0]))
+		if err != nil {
+			logger.Fatal(err)
+		}
+		runningDir = r
+	}
+
+	// setup logging to file
+	l, teardown, err := InitLogging(*logDirectory, *logLevel, *JSONOutput)
+	if err != nil {
+		logger.Fatalf("error initializing logger file -> %v\n", err)
+	}
+	defer func() {
+		teardown()
+	}()
+	logger = l
+
+	// create the windows service
+	s, err := service.New(&program{exit:make(chan struct{})}, &service.Config{
 		Name:        "pdhexport",
 		DisplayName: "pdhexport",
-		Description: "A service for exporting windows pdh counters into a Prometheus exporter format available at http://localhost:8080 (or custom specified port).",
-	}
-
-	prg := &program{}
-	s, err := service.New(prg, svcConfig)
+		Description: fmt.Sprintf("A service for exporting windows pdh counters into a Prometheus exporter available at %s.", *addr),
+	})
 	if err != nil {
-		log.Fatal(err)
-	}
-	errs := make(chan error, 5)
-	logger, err = s.Logger(errs)
-	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
-	go func() {
-		for {
-			err := <-errs
-			if err != nil {
-				log.Print(err)
-			}
-		}
-	}()
-
-	// check if a control method was specified for the service
+	// check if a control method was specified for the windows service
 	if len(*svcFlag) != 0 {
+		logger.WithField("svcFlag", *svcFlag).Debug("received service control flag")
 		err := service.Control(s, *svcFlag)
 		if err != nil {
-			log.Printf("Valid actions: %q\n", service.ControlAction)
-			log.Fatal(err)
+			logger.Fatalf("%s. Valid actions: %q\n", err, service.ControlAction)
 		}
+		logger.Debug("returning from main()")
 		return
 	}
+
+	// The following will be executed when pdhexport is ran from CLI.
+	logger.Debug("calling s.Run() in main()")
 	err = s.Run()
 	if err != nil {
-		logger.Error(err)
+		logger.Fatal(err)
 	}
+	logger.Info("goodbye!")
 }
 
 // InitLogging is used to initialize all properties of the logrus
 // logging library.
-func InitLogging(logDirectory string, logLevel string, jsonOutput bool) (file *os.File, err error) {
+func InitLogging(logDirectory string, logLevel string, jsonOutput bool) (logger *logrus.Logger, teardown func(), err error) {
+	logger = logrus.New()
+	var file *os.File
+
 	// if LogDirectory is "" then logging will just go to stdout
 	if logDirectory != "" {
+		// if the default "logs" was specified then we need to turn it into an absolute path for service manager
+		if logDirectory == "logs" {
+			logDirectory = filepath.Join(runningDir, logDirectory)
+		}
+
 		if _, err = os.Stat(logDirectory); os.IsNotExist(err) {
 			err := os.MkdirAll(logDirectory, 0777)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 			// Chmod is needed because the permissions can't be set by the Mkdir function in Linux
 			err = os.Chmod(logDirectory, 0777)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		file, err = os.OpenFile(filepath.Join(logDirectory, fmt.Sprintf("%s%s", time.Now().Local().Format("20060102"), ".log")), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		log.SetOutput(file)
+		//logger.SetOutput(file)
+		logger.Out = file
 	} else {
 		// Output to stdout instead of the default stderr
-		log.SetOutput(os.Stdout)
+		//logrus.SetOutput(os.Stdout)
+		logger.Out = os.Stdout
 	}
-
-	logLevel = strings.ToLower(logLevel)
 
 	if jsonOutput {
-		log.SetFormatter(&log.JSONFormatter{})
+		//logger.SetFormatter(&logrus.JSONFormatter{})
+		logger.Formatter = &logrus.JSONFormatter{}
 	} else {
-		log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+		//logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+		logger.Formatter = &logrus.TextFormatter{FullTimestamp: true}
 	}
 
-	l, err := log.ParseLevel(logLevel)
+	l, err := logrus.ParseLevel(strings.ToLower(logLevel))
 	if err != nil {
-		log.SetLevel(log.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	} else {
-		log.SetLevel(l)
+		logger.SetLevel(l)
 	}
 
-	return file, nil
+	teardown = func() {
+		if err = file.Close(); err != nil {
+			logger.Errorf("error closing logger file -> %v\n", err)
+		}
+	}
+
+	return logger, teardown, nil
 }
 
 // watchFile watches the file located at filePath for changes and sends a message through
 // the channel fileChangedChan when the file has been changed. If an error occurs, it will be
 // sent through the channel errorsChan.
-func watchFile(filePath string, fileChangedChan chan struct{}, errorsChan chan error) {
+func watchFile(file string, fileChangeHandler func(filePath string) error, cancelChan chan struct{}) error {
 	var initialStat os.FileInfo
+	loop:
 	for {
-		stat, err := os.Stat(filePath)
+		stat, err := os.Stat(file)
 		if err != nil {
-			errorsChan <- err
-			return
+			return err
 		}
 
 		if initialStat == nil || stat.Size() != initialStat.Size() || stat.ModTime() != initialStat.ModTime() {
 			initialStat = stat
-			fileChangedChan <- struct{}{}
+			err := fileChangeHandler(file)
+			if err != nil {
+				return err
+			}
 		}
 
-		time.Sleep(1 * time.Second)
+		select{
+		case <- cancelChan:
+			break loop // must specify name of loop or else it will just break out of select{}
+		case <- time.After(5 * time.Second):
+		}
 	}
+
+	return nil
 }
 
-// ReadConfigFile will parse the Yaml formatted file and pass along all PdhCounterSet that are new to addPCSChan
-func ReadConfigFile(file string) {
-	newPCSCollectedSets := map[string]*PdhCounterSet{}
-	config := NewConfig(file)
+// ReadConfigFile will parse the Yaml formatted file and pass along all pdhHostSet that are new to addPCSChan
+func ReadConfigFile(file string) error {
+	logger.WithFields(logrus.Fields{
+		"host": hostName,
+		"config": file,
+	}).Debug("Reading config file")
 
-	for _, hostName := range config.HostNames {
-		lh := false
-		if hostName == "localhost" {
-			if h, err := os.Hostname(); err == nil {
-				hostName = strings.ToUpper(h)
-				lh = true
-			}
+	newPdhQueries := PdhCounter.NewPdhQueryMap(logger)
+	config := NewConfig(file, logger)
 
+	for _, h := range config.HostNames {
+		lh := h == "localhost"
+		if lh {
+			h = hostName
 		}
 
 		// if the hostname has not already been processed
-		if _, ok := newPCSCollectedSets[hostName]; !ok {
-			newPCSCollectedSets[hostName] = &PdhCounterSet{
-				Done:        make(chan struct{}),
-				Host:        hostName,
-				Interval:    time.Duration(config.Interval) * time.Second,
-				IsLocalhost: lh,
-			}
+		if newPdhQueries.GetQuery(h) == nil {
+			logger.WithField("host", h).Debug("Determining counters for host")
 
-			// Add into cSet each PdhCounter that has a key that matches the hostname
-			for k, v := range config.Counters {
-				if matched, _ := regexp.MatchString(k, hostName); matched {
+			i := time.Duration(config.Interval) * time.Second
+			query := PdhCounter.NewPdhQuery(h, i, lh, logger)
+
+			// Build a list of all counters that should be excluded from collection for this host
+			exCounters := map[PdhCounter.PdhPath]struct{}{}
+			for k, v := range config.ExcludeCounters {
+				matched, err := regexp.MatchString(k, h)
+				if err != nil {
+					return err
+				}
+				if matched {
 					for _, counter := range v {
-						newPCSCollectedSets[hostName].Counters = append(newPCSCollectedSets[hostName].Counters, counter)
+						exCounters[counter] = struct{}{}
 					}
 				}
 			}
-		}
-	}
 
-	// Figure out if any PdhCounterSet have been removed completely from collection
-	for hostName, cSet := range PCSCollectedSets {
-		if _, ok := newPCSCollectedSets[hostName]; !ok {
-			// stop the old collection set
-			cSet.StopCollect()
-		}
-	}
-
-	// Figure out if any PdhCounterSet have been added or changed
-	for hostName, cSet := range newPCSCollectedSets {
-		newSet := true
-
-		PCSCollectedSetsMux.Lock()
-		v, ok := PCSCollectedSets[hostName]
-		PCSCollectedSetsMux.Unlock()
-		if ok {
-			if !v.TestEquivalence(cSet) {
-				newSet = true
-
-				// stop the old collection set
-				v.StopCollect()
-			} else {
-				newSet = false
-			}
-		}
-
-		if len(cSet.Counters) > 0 && newSet {
-			go func(cSet PdhCounterSet) {
-				PCSCollectedSetsMux.Lock()
-				PCSCollectedSets[cSet.Host] = &cSet
-				PCSCollectedSetsMux.Unlock()
-
-				if err := cSet.StartCollect(); err != nil {
-					log.WithFields(log.Fields{
-						"host": cSet.Host,
-					}).Errorf("Error experienced in StartCollect -> %s", err)
+			// Add all counters that should be collected for this host
+			for k, v := range config.Counters {
+				matched, err := regexp.MatchString(k, h)
+				if err != nil {
+					return err
 				}
+				if matched {
+					counterloop:
+					for _, counterPath := range v {
+						p, err := PdhCounter.NewPdhCounter(h, counterPath, logger)
+						if err != nil {
+							logger.WithFields(logrus.Fields{
+								"host": h,
+								"counter": counterPath,
+							}).Errorf("error experienced creating new pdhCounter -> %s", err)
+							continue
+						}
 
-				PCSCollectedSetsMux.Lock()
-				delete(PCSCollectedSets, cSet.Host)
-				PCSCollectedSetsMux.Unlock()
+						// if counterPath has an exact match in exCounters then don't add it to query
+						if _, ok := exCounters[counterPath]; ok {
+							continue
+						}
 
-				log.WithFields(log.Fields{
-					"host": cSet.Host,
-				}).Info("finished StartCollect()\n")
-			}(*cSet)
-			log.Debugf("%s: sent new PdhCounterSet\n", hostName)
+						for exK := range exCounters {
+							if exP, err := PdhCounter.NewPdhCounter(h, exK, logger); err != nil {
+								logger.WithFields(logrus.Fields{
+									"host": h,
+									"counter": counterPath,
+								}).Errorf("error experienced creating new exclude pdhCounter -> %s", err)
+								continue
+							} else if exP.ContainsPdhCounter(p) {
+								// exclude p completely
+								continue counterloop
+							}
+						}
+						query.AddCounter(p)
+					}
+				}
+			}
+
+			logger.WithFields(logrus.Fields{
+				"counterCount": query.NumCounters(),
+				"host":         query.Host,
+			}).Debug("Finished determining counters for host")
+			newPdhQueries.Add(h, query)
 		}
 	}
+
+	// Figure out if any hosts have been removed completely from collection
+	for qResult := range PdhQueries.IterateMap() {
+		if newPdhQueries.GetQuery(hostName) == nil {
+			// stop the old query
+			qResult.Query.Stop()
+		}
+	}
+
+	// send all queries to be collected
+	for result := range newPdhQueries.IterateMap() {
+		logger.WithFields(logrus.Fields{
+			"host": result.Host,
+		}).Info("sending new query")
+		PdhQueries.NewQueryChan <- result
+	}
+
+	return nil
 }

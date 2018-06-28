@@ -122,6 +122,16 @@ type (
 	PDH_HCOUNTER HANDLE // counter handle
 )
 
+// PDH_COUNTER_PATH_ELEMENTS contains parsed elements of a counter path
+type PDH_COUNTER_PATH_ELEMENTS struct {
+	MachineName *uint16
+	ObjectName *uint16
+	InstanceName *uint16
+	ParentInstance *uint16
+	InstanceIndex uint32
+	CounterName *uint16
+}
+
 // Union specialization for double values
 type PDH_FMT_COUNTERVALUE_DOUBLE struct {
 	CStatus     uint32
@@ -172,6 +182,7 @@ var (
 	pdh_GetFormattedCounterArrayW *syscall.Proc
 	pdh_OpenQuery                 *syscall.Proc
 	pdh_ValidatePathW             *syscall.Proc
+	pdh_ParseCounterPathW		  *syscall.Proc
 )
 
 func init() {
@@ -187,6 +198,7 @@ func init() {
 	pdh_GetFormattedCounterArrayW = libpdhDll.MustFindProc("PdhGetFormattedCounterArrayW")
 	pdh_OpenQuery = libpdhDll.MustFindProc("PdhOpenQuery")
 	pdh_ValidatePathW = libpdhDll.MustFindProc("PdhValidatePathW")
+	pdh_ParseCounterPathW = libpdhDll.MustFindProc("PdhParseCounterPathW")
 }
 
 // Adds the specified counter to the query. This is the internationalized version. Preferably, use the
@@ -406,6 +418,49 @@ func PdhGetFormattedCounterArrayLong(hCounter PDH_HCOUNTER, lpdwBufferSize *uint
 		uintptr(unsafe.Pointer(lpdwBufferSize)),
 		uintptr(unsafe.Pointer(lpdwBufferCount)),
 		uintptr(unsafe.Pointer(itemBuffer)))
+
+	return uint32(ret)
+}
+
+// PdhParseCounterPath will parse a PDH counter path into its individual elements. You should call this function twice,
+// the first time to get the required buffer size (set szFullPathBuffer to an uninstantiated PDH_COUNTER_PATH_ELEMENTS
+// instance and pdwBufferSize to nil), and the second time to get the data.
+//
+//	szFullPathBuffer: PDH counter path to be parsed. Example: \Processor(_Total)\% Processor Time
+//	pCounterPathElements: Caller-allocated buffer that receives PDH_COUNTER_PATH_ELEMENTS. PDH_COUNTER_PATH_ELEMENTS
+// 		contains pointers to the individual string elements of the path referenced by the szFullPathBuffer parameter.
+//	pdwBufferSize: Size of the pCounterPathElements buffer, in bytes. If zero on input, the function returns
+// 		PDH_MORE_DATA and sets this parameter to the required buffer size.
+//
+//	Example:
+//		path := `\Processor(_Total)\% Processor Time`
+//		var b uint32
+//		if ret := win.PdhParseCounterPath(path, nil, &b); ret == win.PDH_MORE_DATA {
+//			buf := make([]byte, int(b))
+//			if ret = win.PdhParseCounterPath(path, &buf[0], &b); ret == win.ERROR_SUCCESS {
+//				p := *(*win.PDH_COUNTER_PATH_ELEMENTS)(unsafe.Pointer(&buf[0]))
+//				fmt.Printf("MachineName: %s\n", win.UTF16PtrToString(p.MachineName))
+//				fmt.Printf("ObjectName: %s\n", win.UTF16PtrToString(p.ObjectName))
+//				fmt.Printf("InstanceName: %s\n", win.UTF16PtrToString(p.InstanceName))
+//				fmt.Printf("ParentInstance: %s\n", win.UTF16PtrToString(p.ParentInstance))
+//				fmt.Printf("InstanceIndex: %d\n", p.InstanceIndex)
+//				fmt.Printf("CounterName: %s\n", win.UTF16PtrToString(p.CounterName))
+//			} else {
+//				// Failed to parse counter
+//				// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+//			}
+//		} else {
+//			// Failed to obtain buffer info
+//			// Possible error codes: PDH_INVALID_ARGUMENT, PDH_INVALID_PATH, PDH_MEMORY_ALLOCATION_FAILURE
+//		}
+func PdhParseCounterPath(szFullPathBuffer string, pCounterPathElements *byte, pdwBufferSize *uint32) uint32 {
+	ptxt, _ := syscall.UTF16PtrFromString(szFullPathBuffer)
+
+	ret, _, _ := pdh_ParseCounterPathW.Call(
+		uintptr(unsafe.Pointer(ptxt)),
+		uintptr(unsafe.Pointer(pCounterPathElements)),
+		uintptr(unsafe.Pointer(pdwBufferSize)),
+		0)
 
 	return uint32(ret)
 }
