@@ -34,7 +34,6 @@ func (p *PdhPath) AppendHostname (hostname string) {
 type pdhCounter struct{
 	collectionFailures 		int
 	CounterName      		string
-	ExcludeInstances 		[]string              // A list of PDH instances to be excluded from collection
 	handle 			 		*win.PDH_HCOUNTER
 	InstanceIndex    		uint32
 	InstanceName     		string
@@ -188,7 +187,6 @@ func NewPdhCounter(hostname string, path PdhPath, logger *logrus.Logger) (*pdhCo
 		if ret := win.PdhParseCounterPath(path.String(), &buf[0], &b); ret == win.ERROR_SUCCESS {
 			c := *(*win.PDH_COUNTER_PATH_ELEMENTS)(unsafe.Pointer(&buf[0]))
 			p := pdhCounter{
-				ExcludeInstances: []string{},
 				Path: path,
 				promCollectors: map[string]*prometheus.Gauge{},
 				promCollectorsLock: &sync.RWMutex{},

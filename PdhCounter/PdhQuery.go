@@ -145,7 +145,6 @@ func (p *pdhQuery) Start() error {
 									c := filledBuf[i]
 									s := win.UTF16PtrToString(c.SzName)
 
-									// TODO: figure out how to exclude s from being reported if it exists in the defined ExcludeCounters
 									if val, ok := v.promCollectors[s]; ok {
 										(*val).Set(c.FmtValue.DoubleValue)
 										v.collectionFailures = 0

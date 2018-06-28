@@ -334,31 +334,31 @@ func ReadConfigFile(file string) error {
 					for _, counterPath := range v {
 						p, err := PdhCounter.NewPdhCounter(h, counterPath, logger)
 						if err != nil {
-							return err
-							// TODO: is returning err here good? or should the err be handled without returning?
-							//logger.WithFields(logrus.Fields{
-							//	"host": h,
-							//	"counter": counterPath,
-							//}).Errorf("Error experienced in NewPdhCounter -> %s", err)
-							//continue counterloop
+							logger.WithFields(logrus.Fields{
+								"host": h,
+								"counter": counterPath,
+							}).Errorf("error experienced creating new pdhCounter -> %s", err)
+							continue
 						}
 
 						// if counterPath has an exact match in exCounters then don't add it to query
-						if _, ok := exCounters[counterPath]; !ok {
-							for exK := range exCounters {
-								if exP, err := PdhCounter.NewPdhCounter(h, exK, logger); err != nil {
-									// TODO: is returning err here good? or should the err be handled without returning?
-									return err
-								} else if p.ContainsPdhCounter(exP) {
-									// exclude the individual instance of exP
-									p.ExcludeInstances = append(p.ExcludeInstances, exP.Instance())
-								} else if exP.ContainsPdhCounter(p) {
-									// exclude p completely
-									continue counterloop
-								}
-							}
-							query.AddCounter(p)
+						if _, ok := exCounters[counterPath]; ok {
+							continue
 						}
+
+						for exK := range exCounters {
+							if exP, err := PdhCounter.NewPdhCounter(h, exK, logger); err != nil {
+								logger.WithFields(logrus.Fields{
+									"host": h,
+									"counter": counterPath,
+								}).Errorf("error experienced creating new exclude pdhCounter -> %s", err)
+								continue
+							} else if exP.ContainsPdhCounter(p) {
+								// exclude p completely
+								continue counterloop
+							}
+						}
+						query.AddCounter(p)
 					}
 				}
 			}
