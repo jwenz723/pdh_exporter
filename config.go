@@ -6,17 +6,18 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jwenz723/pdhexport/PdhCounter"
 	"gopkg.in/yaml.v2"
 )
 
 // Config defines a struct to match a configuration yaml file.
 type Config struct {
-	Counters        	map[string][]string `yaml:"Counters"`
+	Counters        	map[string][]PdhCounter.PdhPath    `yaml:"Counters"`
 	CountersLock		sync.RWMutex
 	CountersSequence 	int
-	ExcludeCounters		map[string][]string `yaml:"ExcludeCounters"`
-	HostNames       	[]string `yaml:"HostNames"`
-	Interval        	int64 `yaml:"Interval"`
+	ExcludeCounters		map[string][]PdhCounter.PdhPath `yaml:"ExcludeCounters"`
+	HostNames       	[]string                              `yaml:"HostNames"`
+	Interval        	int64                              `yaml:"Interval"`
 }
 
 // UnmarshalYAML overrides what happens when the yaml.Unmarshal function is executed on the Config type
@@ -27,14 +28,14 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	// Force all keys in c.Counters to be lowercase
-	t := map[string][]string{}
+	t := map[string][]PdhCounter.PdhPath{}
 	for k, v := range c.Counters {
 		t[strings.ToLower(k)] = v
 	}
 	c.Counters = t
 
 	// Force all keys in c.ExcludeCounters to be lowercase
-	e := map[string][]string{}
+	e := map[string][]PdhCounter.PdhPath{}
 	for k, v := range c.ExcludeCounters {
 		e[strings.ToLower(k)] = v
 	}

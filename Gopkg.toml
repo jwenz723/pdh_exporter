@@ -34,6 +34,10 @@
   name = "github.com/kardianos/service"
 
 [[constraint]]
+  name = "github.com/oklog/run"
+  version = "1.0.0"
+
+[[constraint]]
   name = "github.com/prometheus/client_golang"
   version = "0.8.0"
 

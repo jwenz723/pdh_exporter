@@ -38,6 +38,12 @@
   version = "v1.0.1"
 
 [[projects]]
+  name = "github.com/oklog/run"
+  packages = ["."]
+  revision = "4dadeb3030eda0273a12382bb2348ffc7c9d1a39"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/prometheus/client_golang"
   packages = [
     "prometheus",
@@ -83,7 +89,7 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "a8fb68e7206f8c78be19b432c58eb52a6aa34462"
+  revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
 [[projects]]
   branch = "master"
@@ -96,7 +102,7 @@
     "windows/svc/eventlog",
     "windows/svc/mgr"
   ]
-  revision = "8014b7b116a67fea23fbb82cd834c9ad656ea44b"
+  revision = "7138fd3d9dc8335c567ca206f4333fb75eb05d56"
 
 [[projects]]
   name = "gopkg.in/yaml.v2"
@@ -107,6 +113,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "cd041eb7c9a5cb7924c6c5b528c8aa4d56cd12a58def6d8cee5de738a3c57955"
+  inputs-digest = "10fa3db06afd271657d21d1e8722a91c5e790fdca3c033c865e642b9b2264a94"
   solver-name = "gps-cdcl"
   solver-version = 1
