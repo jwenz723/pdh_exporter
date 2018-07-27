@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jwenz723/pdhexport/PdhCounter"
+	"github.com/jwenz723/pdh_exporter/PdhCounter"
 	"github.com/kardianos/service"
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	addr = flag.String("listen-address", ":8080", "The address to listen on for HTTP requests.")
+	addr = flag.String("listen-address", ":9580", "The address to listen on for HTTP requests.")
 	config = flag.String("config", "config.yml", "Fully qualified path to yml formatted config file.")
 	logDirectory = flag.String("logDirectory", "logs", "Specify a directory where logs should be written to. Use \"\" to logger to stdout.")
 	logLevel = flag.String("logLevel", "info", "Use this flag to specify what level of logging you wish to have output. Available values: panic, fatal, error, warn, info, debug.")
@@ -77,11 +77,21 @@ func (p *program) run() error {
 
 	var g run.Group
 	{
+		metricsPath := "/metrics"
 		// Expose the registered prometheus metrics via HTTP.
 		ln, _ := net.Listen("tcp", *addr)
 		g.Add(
 			func() error {
-				http.Handle("/metrics", promhttp.Handler())
+				http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+					w.Write([]byte(`<html>
+						<head><title>PDH Exporter</title></head>
+						<body>
+						<h1>PDH Exporter</h1>
+						<p><a href="` + metricsPath + `">Metrics</a></p>
+						</body>
+						</html>`))
+				})
+				http.Handle(metricsPath, promhttp.Handler())
 				return http.Serve(ln, nil)
 			},
 			func(err error) {
@@ -138,7 +148,7 @@ func (p *program) run() error {
 func main() {
 	flag.Parse()
 
-	// determine the runningDir (absolute path) of pdhexport.exe whether it is ran from CLI or service manager
+	// determine the runningDir (absolute path) of pdh_exporter.exe whether it is ran from CLI or service manager
 	if service.Interactive() {
 		// running in CLI
 		r, err := os.Getwd()
@@ -160,16 +170,14 @@ func main() {
 	if err != nil {
 		logger.Fatalf("error initializing logger file -> %v\n", err)
 	}
-	defer func() {
-		teardown()
-	}()
+	defer teardown()
 	logger = l
 
 	// create the windows service
 	s, err := service.New(&program{exit:make(chan struct{})}, &service.Config{
-		Name:        "pdhexport",
-		DisplayName: "pdhexport",
-		Description: fmt.Sprintf("A service for exporting windows pdh counters into a Prometheus exporter available at %s.", *addr),
+		Name:        "pdh_exporter",
+		DisplayName: "PDH Exporter",
+		Description: fmt.Sprintf("A service for exporting windows PDH counters into a Prometheus exporter available at %s.", *addr),
 	})
 	if err != nil {
 		logger.Fatal(err)
@@ -186,7 +194,7 @@ func main() {
 		return
 	}
 
-	// The following will be executed when pdhexport is ran from CLI.
+	// The following will be executed when pdh_exporter is ran from CLI.
 	logger.Debug("calling s.Run() in main()")
 	err = s.Run()
 	if err != nil {
